@@ -317,47 +317,26 @@ class TextAnalyzer:
 
 def analyze_text(text: str) -> Dict:
     """
-    Enhanced main function to analyze text with professional insights.
+    Main function to analyze text.
     """
-    analyzer = TextAnalyzer(text)
-    
-    sentiment_analysis = analyzer.get_sentiment_analysis()
-    readability = analyzer.get_readability_metrics()
-    key_phrases = analyzer.extract_key_phrases()
-    named_entities = analyzer.get_named_entities()
-    language_info = analyzer.get_language_info()
-    content_category = analyzer.get_content_category()
-    summary = analyzer.get_summary()
-    
-    return {
-        "sentiment_analysis": {
-            "sentiment": sentiment_analysis["sentiment"],
-            "polarity": sentiment_analysis["polarity"],
-            "subjectivity": sentiment_analysis["subjectivity"],
-            "confidence": sentiment_analysis["confidence"],
-            "tone": sentiment_analysis["tone"],
-            "professional_metrics": sentiment_analysis["professional_metrics"]
-        },
-        "readability": {
-            "flesch_reading_ease": readability["flesch_reading_ease"],
-            "avg_sentence_length": readability["avg_sentence_length"],
-            "word_count": readability["word_count"],
-            "sentence_count": readability["sentence_count"],
-            "syllable_count": readability["syllable_count"],
-            "difficulty_level": readability["difficulty_level"],
-            "professional_scores": readability["professional_scores"],
-            "writing_improvements": readability["writing_improvements"]
-        },
-        "key_phrases": key_phrases,
-        "named_entities": named_entities,
-        "language_info": {
-            "language_code": language_info["language_code"],
-            "confidence": language_info["confidence"]
-        },
-        "content_category": {
-            "primary_category": content_category["primary_category"],
-            "confidence_score": content_category["confidence_score"],
-            "category_distribution": content_category["category_distribution"]
-        },
-        "summary": summary
-    }
+    try:
+        analyzer = TextAnalyzer(text)
+        
+        return {
+            "sentiment_analysis": analyzer.get_sentiment_analysis(),
+            "readability": analyzer.get_readability_metrics(),
+            "key_phrases": analyzer.extract_key_phrases(),
+            "named_entities": analyzer.get_named_entities(),
+            "language_info": analyzer.get_language_info(),
+            "content_category": analyzer.get_content_category(),
+            "summary": analyzer.get_summary()
+        }
+    except Exception as e:
+        import traceback
+        error_detail = {
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "nltk_data_path": nltk.data.path
+        }
+        print("Text Analysis Error:", error_detail)  # This will show in your logs
+        raise Exception(f"Analysis failed: {str(e)}. NLTK path: {nltk.data.path}")
