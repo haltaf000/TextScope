@@ -26,7 +26,7 @@ cd textscope
 2. Create a virtual environment and activate it:
 ```bash
 python -m venv venv
-.\.venv\Scripts\Activate  # On Windows: venv\Scripts\activate
+.\.venv\Scripts\Activate  
 ```
 
 3. Install dependencies:
