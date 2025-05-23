@@ -28,7 +28,10 @@ REQUIRED_NLTK_DATA = [
     'maxent_ne_chunker',
     'words',
     'stopwords',
-    'wordnet'
+    'wordnet',
+    'brown',  # Required for TextBlob
+    'conll2000',  # Required for TextBlob
+    'movie_reviews'  # Required for TextBlob
 ]
 
 def ensure_nltk_data():
@@ -194,27 +197,50 @@ class TextAnalyzer:
         """
         Extract key phrases with relevance scores.
         """
-        # Get noun phrases from TextBlob
-        noun_phrases = list(set(self.blob.noun_phrases))
+        try:
+            # Get noun phrases from TextBlob
+            noun_phrases = list(set(self.blob.noun_phrases))
+        except Exception as e:
+            print(f"Noun phrase extraction failed: {str(e)}")
+            # Fallback: Use basic noun extraction
+            tagged = nltk.pos_tag(self.tokens)
+            noun_phrases = []
+            current_phrase = []
+            
+            for word, tag in tagged:
+                if tag.startswith('NN'):  # If it's a noun
+                    current_phrase.append(word)
+                elif current_phrase:  # If we have a phrase and hit a non-noun
+                    noun_phrases.append(' '.join(current_phrase))
+                    current_phrase = []
+            
+            if current_phrase:  # Add the last phrase if exists
+                noun_phrases.append(' '.join(current_phrase))
+            
+            noun_phrases = list(set(noun_phrases))  # Remove duplicates
         
         # Calculate TF-IDF-like scores for phrases
         phrase_scores = []
-        total_phrases = len(noun_phrases)
+        total_phrases = len(noun_phrases) if noun_phrases else 1
         
         for phrase in noun_phrases:
-            # Term frequency
-            tf = self.text.lower().count(phrase.lower()) / len(self.tokens)
-            # Inverse document frequency (simplified)
-            idf = math.log(total_phrases / (1 + self.text.lower().count(phrase.lower())))
-            # TF-IDF score
-            score = tf * idf
-            
-            phrase_scores.append({
-                "phrase": phrase,
-                "relevance_score": round(score, 4),
-                "frequency": self.text.lower().count(phrase.lower()),
-                "importance": round(score * 100, 2)  # Add importance score for visualization
-            })
+            try:
+                # Term frequency
+                tf = self.text.lower().count(phrase.lower()) / len(self.tokens)
+                # Inverse document frequency (simplified)
+                idf = math.log(total_phrases / (1 + self.text.lower().count(phrase.lower())))
+                # TF-IDF score
+                score = tf * idf
+                
+                phrase_scores.append({
+                    "phrase": phrase,
+                    "relevance_score": round(score, 4),
+                    "frequency": self.text.lower().count(phrase.lower()),
+                    "importance": round(score * 100, 2)  # Add importance score for visualization
+                })
+            except Exception as e:
+                print(f"Error scoring phrase '{phrase}': {str(e)}")
+                continue
         
         # Sort by relevance score and return top N
         return sorted(phrase_scores, key=lambda x: x['relevance_score'], reverse=True)[:top_n]

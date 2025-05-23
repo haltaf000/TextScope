@@ -5,7 +5,19 @@ services:
     buildCommand: |
       pip install -r requirements.txt
       mkdir -p nltk_data
-      python -c "import nltk; nltk.download('punkt', download_dir='nltk_data'); nltk.download('averaged_perceptron_tagger', download_dir='nltk_data'); nltk.download('maxent_ne_chunker', download_dir='nltk_data'); nltk.download('words', download_dir='nltk_data'); nltk.download('stopwords', download_dir='nltk_data'); nltk.download('wordnet', download_dir='nltk_data')"
+      python -m textblob.download_corpora
+      python -c "
+      import nltk
+      nltk.download('punkt', download_dir='nltk_data')
+      nltk.download('averaged_perceptron_tagger', download_dir='nltk_data')
+      nltk.download('maxent_ne_chunker', download_dir='nltk_data')
+      nltk.download('words', download_dir='nltk_data')
+      nltk.download('stopwords', download_dir='nltk_data')
+      nltk.download('wordnet', download_dir='nltk_data')
+      nltk.download('brown', download_dir='nltk_data')
+      nltk.download('conll2000', download_dir='nltk_data')
+      nltk.download('movie_reviews', download_dir='nltk_data')
+      "
     startCommand: gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
