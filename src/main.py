@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import List
 import json
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from . import models, schemas, security
 from .database import get_db, engine
@@ -14,7 +17,12 @@ from .text_preprocessor import analyze_text
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="TextScope", description="Professional Text Analysis Platform")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -69,6 +77,7 @@ async def read_users_me(
 
 # Text analysis endpoints
 @app.post("/analyze/", response_model=schemas.TextAnalysis)
+@limiter.limit("20/minute")  # Allow 20 analyses per minute
 async def analyze_text_endpoint(
     text_input: schemas.TextAnalysisCreate,
     db: Session = Depends(get_db),
@@ -87,6 +96,15 @@ async def analyze_text_endpoint(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Text exceeds maximum length of 10,000 characters"
             )
+
+        # Check if analysis with same text already exists for this user
+        existing_analysis = db.query(models.TextAnalysis).filter(
+            models.TextAnalysis.user_id == current_user.id,
+            models.TextAnalysis.text == text_input.text
+        ).first()
+        
+        if existing_analysis:
+            return existing_analysis
 
         # Perform analysis
         analysis_result = analyze_text(text_input.text)
