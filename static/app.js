@@ -134,6 +134,7 @@ async function analyzeText(event) {
     const text = document.getElementById('textInput').value;
     const title = document.getElementById('titleInput').value || "Untitled Analysis";
     const submitButton = event.target.querySelector('button[type="submit"]');
+    const analysisResults = document.getElementById('analysisResults');
     
     if (!text.trim()) {
         alert('Please enter some text to analyze.');
@@ -144,7 +145,6 @@ async function analyzeText(event) {
         submitButton.disabled = true;
         submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analyzing...';
         
-        console.log('Sending analysis request...');
         const response = await fetch('/analyze/', {
             method: 'POST',
             headers: {
@@ -154,26 +154,27 @@ async function analyzeText(event) {
             body: JSON.stringify({ text, title }),
         });
 
-        console.log('Response status:', response.status);
-        const responseText = await response.text();
-        console.log('Response text:', responseText);
-
         if (response.ok) {
-            const result = JSON.parse(responseText);
-            console.log('Analysis result:', result);
+            const result = await response.json();
             currentAnalysisData = result;
-            displayAnalysisResults(result);
-            loadAnalysisHistory();
+            
             // Clear the form
             document.getElementById('textInput').value = '';
             document.getElementById('titleInput').value = '';
+            
+            // Update UI
+            displayAnalysisResults(result);
+            await loadAnalysisHistory();  // Refresh history after successful analysis
+            
+            // Scroll to results
+            analysisResults.scrollIntoView({ behavior: 'smooth' });
         } else {
-            console.error('Analysis failed:', responseText);
-            alert('Analysis failed. Please try again.');
+            const errorData = await response.json();
+            alert(`Analysis failed: ${errorData.detail || 'Please try again.'}`);
         }
     } catch (error) {
         console.error('Analysis error:', error);
-        alert('An error occurred during analysis. Please check the console for details.');
+        alert('An error occurred during analysis. Please try again.');
     } finally {
         submitButton.disabled = false;
         submitButton.innerHTML = '<i class="fas fa-chart-line mr-2"></i>Analyze Text';
@@ -250,421 +251,61 @@ function displayAnalysisResults(result) {
         sentimentExplanation = "The text expresses a strongly positive sentiment, conveying optimism, approval, or satisfaction.";
     } else if (polarity < -0.33) {
         sentimentColor = '#DC2626'; // Red for negative
-        sentimentExplanation = "The text expresses a strongly negative sentiment, conveying criticism, dissatisfaction, or concern.";
+        sentimentExplanation = "The text expresses a strongly negative sentiment, conveying criticism, disapproval, or dissatisfaction.";
     } else {
         sentimentColor = '#D97706'; // Yellow for neutral
-        sentimentExplanation = "The text maintains a neutral tone, presenting information without strong emotional bias.";
+        sentimentExplanation = "The text maintains a neutral sentiment, presenting information without strong emotional bias.";
     }
-    sentimentBar.style.backgroundColor = sentimentColor;
     
-    // Set sentiment label with tone
-    sentimentLabel.textContent = `${result.sentiment.charAt(0).toUpperCase() + result.sentiment.slice(1)} (${result.tone})`;
-    sentimentLabel.className = `text-sm font-medium ${
-        polarity > 0.33 ? 'text-green-600' : 
-        polarity < -0.33 ? 'text-red-600' : 
-        'text-yellow-600'
-    }`;
+    sentimentBar.style.backgroundColor = sentimentColor;
+    sentimentLabel.textContent = result.sentiment;
+    sentimentLabel.style.color = sentimentColor;
 
-    // Set sentiment metrics with professional insights
-    sentimentResult.innerHTML = `
-        <div class="space-y-4">
-            <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                <div class="flex items-center justify-between mb-2">
-                    <h4 class="text-sm font-medium text-primary">Sentiment Overview</h4>
-                    <button onclick="toggleSentimentDetails()" class="text-secondary hover:text-primary transition-colors">
-                        <i class="fas fa-info-circle"></i>
-                    </button>
-                </div>
-                <p class="text-sm text-secondary">${sentimentExplanation}</p>
-            </div>
-
-            <div id="sentimentDetails" class="hidden space-y-3">
-                <div class="p-3 bg-white rounded-lg border border-gray-100">
-                    <h4 class="text-sm font-medium text-primary mb-2">Understanding Sentiment Analysis</h4>
-                    <div class="text-sm text-secondary space-y-2">
-                        <p><strong>Polarity</strong> measures the emotional tone of the text, ranging from negative (-1) to positive (1).</p>
-                        <p><strong>Subjectivity</strong> indicates how opinionated the text is, from objective (0) to subjective (1).</p>
-                        <p><strong>Confidence</strong> shows how certain the analysis is about the sentiment assessment.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-3">
-                <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm text-secondary">Polarity</span>
-                        <span class="text-sm font-medium ${getPolarityColor(polarity)}">${polarity.toFixed(2)}</span>
-                    </div>
-                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div class="h-2 ${getPolarityColorClass(polarity)} rounded-full transition-all duration-500" 
-                             style="width: ${Math.abs(polarity * 100)}%">
-                        </div>
-                    </div>
-                    <p class="text-xs text-secondary mt-1">${getPolarityExplanation(polarity)}</p>
-                </div>
-
-                <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm text-secondary">Subjectivity</span>
-                        <span class="text-sm font-medium text-primary">${result.subjectivity.toFixed(2)}</span>
-                    </div>
-                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div class="h-2 bg-purple-600 rounded-full transition-all duration-500" 
-                             style="width: ${result.subjectivity * 100}%">
-                        </div>
-                    </div>
-                    <p class="text-xs text-secondary mt-1">${getSubjectivityExplanation(result.subjectivity)}</p>
-                </div>
-
-                <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm text-secondary">Confidence</span>
-                        <span class="text-sm font-medium text-primary">${result.sentiment_confidence.toFixed(2)}</span>
-                    </div>
-                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div class="h-2 bg-blue-600 rounded-full transition-all duration-500" 
-                             style="width: ${result.sentiment_confidence * 100}%">
-                        </div>
-                    </div>
-                    <p class="text-xs text-secondary mt-1">${getConfidenceExplanation(result.sentiment_confidence)}</p>
-                </div>
-            </div>
-
-            <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                <h4 class="text-sm font-medium text-primary mb-2">Professional Metrics</h4>
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm text-secondary">Passive Voice:</span>
-                        <span class="font-medium text-primary">${result.professional_metrics.passive_voice_count} instances</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm text-secondary">Long Sentences:</span>
-                        <span class="font-medium text-primary">${result.professional_metrics.long_sentences} instances</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm text-secondary">Complex Words:</span>
-                        <span class="font-medium text-primary">${result.professional_metrics.complex_words} instances</span>
-                    </div>
-                </div>
-            </div>
+    // Update all other result sections
+    document.getElementById('polarityValue').textContent = (result.polarity * 100).toFixed(1) + '%';
+    document.getElementById('subjectivityValue').textContent = (result.subjectivity * 100).toFixed(1) + '%';
+    document.getElementById('confidenceValue').textContent = (result.sentiment_confidence * 100).toFixed(1) + '%';
+    document.getElementById('toneValue').textContent = result.tone;
+    
+    // Update metrics
+    document.getElementById('readabilityScore').textContent = result.flesch_score.toFixed(1);
+    document.getElementById('wordCount').textContent = result.word_count;
+    document.getElementById('sentenceCount').textContent = result.sentence_count;
+    document.getElementById('avgSentenceLength').textContent = result.avg_sentence_length.toFixed(1);
+    
+    // Update key phrases
+    const keyPhrasesContainer = document.getElementById('keyPhrases');
+    keyPhrasesContainer.innerHTML = result.key_phrases.map(phrase => `
+        <div class="flex items-center justify-between p-2 rounded bg-gray-50">
+            <span class="text-primary">${phrase.phrase}</span>
+            <span class="text-sm text-secondary">${phrase.importance.toFixed(1)}% relevance</span>
         </div>
-    `;
-
-    // Readability Metrics with Professional Scores
-    const readabilityResult = document.getElementById('readabilityResult');
-    readabilityResult.innerHTML = `
-        <div class="space-y-4">
-            <div class="text-center mb-4">
-                <div class="text-lg font-semibold text-primary">${result.flesch_score.toFixed(1)}</div>
-                <div class="text-sm text-secondary mb-2">Flesch Reading Ease</div>
-        <div class="font-medium ${getDifficultyColor(result.difficulty_level)}">${result.difficulty_level}</div>
-            </div>
-            
-            <div class="grid grid-cols-3 gap-2 text-sm text-secondary">
-                <div><span class="font-medium text-primary">${result.word_count}</span> words</div>
-                <div><span class="font-medium text-primary">${result.sentence_count}</span> sentences</div>
-                <div><span class="font-medium text-primary">${result.syllable_count}</span> syllables</div>
-            </div>
-
-            <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                <h4 class="text-sm font-medium text-primary mb-2">Professional Writing Scores</h4>
-                <div class="space-y-3">
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-secondary">Clarity</span>
-                            <span class="font-medium text-primary">${Math.round(result.professional_scores.clarity)}%</span>
-                        </div>
-                        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div class="h-2 bg-blue-600 rounded-full transition-all duration-500" 
-                                 style="width: ${Math.round(result.professional_scores.clarity)}%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-secondary">Conciseness</span>
-                            <span class="font-medium text-primary">${Math.round(result.professional_scores.conciseness)}%</span>
-                        </div>
-                        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div class="h-2 bg-green-600 rounded-full transition-all duration-500" 
-                                 style="width: ${Math.round(result.professional_scores.conciseness)}%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-secondary">Objectivity</span>
-                            <span class="font-medium text-primary">${Math.round(result.professional_scores.objectivity)}%</span>
-                        </div>
-                        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div class="h-2 bg-purple-600 rounded-full transition-all duration-500" 
-                                 style="width: ${Math.round(result.professional_scores.objectivity)}%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-secondary">Vocabulary Diversity</span>
-                            <span class="font-medium text-primary">${Math.round(result.professional_scores.vocabulary_diversity)}%</span>
-                        </div>
-                        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div class="h-2 bg-indigo-600 rounded-full transition-all duration-500" 
-                                 style="width: ${Math.round(result.professional_scores.vocabulary_diversity)}%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                <h4 class="text-sm font-medium text-primary mb-2">Writing Improvements</h4>
-                <ul class="space-y-2">
-                    ${result.writing_improvements.map(improvement => `
-                        <li class="flex items-start">
-                            <i class="fas fa-lightbulb text-yellow-500 mt-1 mr-2"></i>
-                            <span class="text-sm text-secondary">${improvement}</span>
-                        </li>
-                    `).join('')}
-                </ul>
-            </div>
-        </div>
-    `;
-
-    // Key Phrases with enhanced display
-    const keyPhrasesResult = document.getElementById('keyPhrasesResult');
-    keyPhrasesResult.innerHTML = `
-        <div class="space-y-3">
-            <div class="p-3 bg-gray-50 rounded-lg border border-gray-100 mb-4">
-                <div class="flex items-center justify-between mb-2">
-                    <h4 class="text-sm font-medium text-primary">Key Phrases Overview</h4>
-                    <button onclick="toggleKeyPhrasesDetails()" class="text-secondary hover:text-primary transition-colors">
-                        <i class="fas fa-info-circle"></i>
-                    </button>
-                </div>
-                <div class="text-sm text-secondary">
-                    <p>Key phrases are important terms or expressions that appear frequently in your text and help identify the main topics and themes.</p>
-                </div>
-            </div>
-
-            <div id="keyPhrasesDetails" class="hidden p-3 bg-white rounded-lg border border-gray-100 mb-4">
-                <h4 class="text-sm font-medium text-primary mb-2">Understanding Key Phrases</h4>
-                <div class="text-sm text-secondary space-y-2">
-                    <p><strong>Frequency</strong> shows how many times the phrase appears in the text.</p>
-                    <p><strong>Importance</strong> indicates the phrase's significance relative to the text length.</p>
-                    <p><strong>Relevance Score</strong> combines frequency and importance to rank phrases.</p>
-                </div>
-            </div>
-
-            ${result.key_phrases.map((phrase, index) => {
-                const importancePercent = (phrase.importance * 100).toFixed(1);
-                const relevanceScore = phrase.relevance_score.toFixed(3);
-                const barWidth = Math.min(100, (phrase.frequency / Math.max(...result.key_phrases.map(p => p.frequency))) * 100);
-                
-                return `
-                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-primary transition-colors">
-                        <div class="flex items-start justify-between">
-                            <div class="flex-grow">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-medium text-primary">${phrase.phrase}</span>
-                                    ${index === 0 ? `
-                                        <span class="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
-                                            Most Relevant
-                                        </span>
-                                    ` : ''}
-                                </div>
-                                
-                                <div class="mt-2 space-y-2">
-                                    <div>
-                                        <div class="flex justify-between text-sm mb-1">
-                                            <span class="text-secondary">Frequency</span>
-                                            <span class="font-medium text-primary">${phrase.frequency} occurrences</span>
-                                        </div>
-                                        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                            <div class="h-2 bg-blue-600 rounded-full transition-all duration-500" 
-                                                 style="width: ${barWidth}%">
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div class="p-2 bg-white rounded-lg border border-gray-100">
-                                            <div class="text-xs text-secondary mb-1">Importance</div>
-                                            <div class="flex items-center justify-between">
-                                                <div class="text-sm font-medium text-primary">${importancePercent}%</div>
-                                                <div class="text-xs text-secondary">
-                                                    ${getImportanceLevel(phrase.importance)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="p-2 bg-white rounded-lg border border-gray-100">
-                                            <div class="text-xs text-secondary mb-1">Relevance Score</div>
-                                            <div class="text-sm font-medium text-primary">${relevanceScore}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('')}
-        </div>
-    `;
-
-    // Named Entities with enhanced categorization
-    const entitiesResult = document.getElementById('entitiesResult');
-    entitiesResult.innerHTML = `
-        <div class="space-y-3">
-            ${Object.entries(result.named_entities).map(([type, entities]) => `
-                <div class="p-2 bg-gray-50 rounded-lg">
-                    <div class="font-medium text-primary mb-1">${type}:</div>
+    `).join('');
+    
+    // Update named entities
+    const entitiesContainer = document.getElementById('namedEntities');
+    entitiesContainer.innerHTML = '';
+    Object.entries(result.named_entities).forEach(([type, entities]) => {
+        if (entities.length > 0) {
+            entitiesContainer.innerHTML += `
+                <div class="mb-4">
+                    <h4 class="font-semibold text-primary mb-2">${type}</h4>
                     <div class="flex flex-wrap gap-2">
                         ${entities.map(entity => `
-                            <span class="px-2 py-1 bg-white rounded-full text-sm text-secondary border border-gray-200">
-                                ${entity}
-                            </span>
+                            <span class="px-2 py-1 rounded-full bg-gray-100 text-sm">${entity}</span>
                         `).join('')}
                     </div>
                 </div>
-            `).join('')}
-            </div>
-    `;
-
-    // Language Information with enhanced display
-    const languageResult = document.getElementById('languageResult');
-    languageResult.innerHTML = `
-        <div class="p-3 bg-gray-50 rounded-lg">
-            <div class="flex items-center space-x-2 mb-2">
-                <span class="text-lg font-semibold text-primary">${result.language_code.toUpperCase()}</span>
-                <span class="text-sm px-2 py-1 bg-white rounded-full text-secondary border border-gray-200">
-                    Confidence: ${result.language_confidence}
-                </span>
-            </div>
-        </div>
-    `;
-
-    // Content Category with enhanced visualization and features
-    const categoryResult = document.getElementById('categoryResult');
-    categoryResult.innerHTML = `
-        <div class="space-y-4">
-            <div class="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <div class="text-lg font-semibold text-primary flex items-center">
-                            ${result.content_category.charAt(0).toUpperCase() + result.content_category.slice(1)}
-                            <span class="ml-2 px-2 py-1 text-xs font-medium bg-primary bg-opacity-10 text-primary rounded-full">
-                                Primary Category
-                            </span>
-                        </div>
-                        <div class="text-sm text-secondary mt-1">
-                            Confidence: ${(result.category_confidence * 100).toFixed(1)}%
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <button onclick="toggleCategoryDetails()" class="text-secondary hover:text-primary transition-colors">
-                            <i class="fas fa-info-circle"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div id="categoryDetails" class="hidden mb-4 p-3 bg-white rounded-lg border border-gray-100">
-                    <h4 class="text-sm font-medium text-primary mb-2">Category Analysis</h4>
-                    <div class="text-sm text-secondary space-y-2">
-                        <p>This text has been categorized based on its content, style, and language patterns. The confidence score indicates how strongly the text matches the primary category.</p>
-                        <p>Category distribution shows how the text relates to different content types, helping you understand its overall nature and potential audience.</p>
-                    </div>
-                </div>
-
-                <div class="space-y-3">
-                    ${Object.entries(result.category_distribution)
-                        .sort((a, b) => b[1] - a[1])  // Sort by score in descending order
-                        .map(([cat, score]) => {
-                            const isPrimary = cat === result.content_category;
-                            const scorePercent = Math.round(score * 100);
-                            const barColor = isPrimary ? 'bg-blue-600' : 'bg-gray-400';
-                            return `
-                                <div class="relative">
-                                    <div class="flex items-center justify-between mb-1">
-                                        <div class="flex items-center">
-                                            <span class="text-sm font-medium ${isPrimary ? 'text-blue-600' : 'text-secondary'}">
-                                                ${cat.charAt(0).toUpperCase() + cat.slice(1)}
-                                            </span>
-                                            ${isPrimary ? `
-                                                <span class="ml-2 px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-600 rounded-full">
-                                                    Primary
-                                                </span>
-                                            ` : ''}
-                                        </div>
-                                        <span class="text-sm ${isPrimary ? 'text-blue-600 font-medium' : 'text-secondary'}">
-                                            ${scorePercent}%
-                                        </span>
-                                    </div>
-                                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                        <div class="h-full ${barColor} rounded-full transition-all duration-500"
-                                             style="width: ${scorePercent}%">
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                </div>
-
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <h4 class="text-sm font-medium text-primary mb-2">Category Insights</h4>
-                    <div class="space-y-2">
-                        ${getCategoryInsights(result.content_category, result.category_distribution)}
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Summary with enhanced styling and features
-    document.getElementById('summaryResult').innerHTML = `
-        <div class="space-y-4">
-            <div class="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-primary">Text Summary</h3>
-                    <div class="flex items-center space-x-2">
-                        <button onclick="toggleSummaryDetails()" class="text-secondary hover:text-primary transition-colors">
-                            <i class="fas fa-info-circle"></i>
-                        </button>
-                        <button onclick="copySummary()" class="text-secondary hover:text-primary transition-colors">
-                            <i class="fas fa-copy"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div id="summaryDetails" class="hidden mb-4 p-3 bg-white rounded-lg border border-gray-100">
-                    <h4 class="text-sm font-medium text-primary mb-2">Summary Information</h4>
-                    <div class="text-sm text-secondary space-y-2">
-                        <p>This summary has been generated using advanced natural language processing to capture the main points and key ideas from your text.</p>
-                        <p>The summary maintains the original meaning while providing a concise overview of the content.</p>
-                    </div>
-                </div>
-
-                <div class="relative">
-                    <p class="text-secondary leading-relaxed whitespace-pre-line">${result.summary}</p>
-                    <div class="absolute top-0 right-0 w-8 h-8 flex items-center justify-center">
-                        <span class="text-xs text-secondary">${result.summary.split(' ').length} words</span>
-                    </div>
-                </div>
-
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <h4 class="text-sm font-medium text-primary mb-2">Summary Metrics</h4>
-                    <div class="grid grid-cols-3 gap-4">
-                        <div class="text-center p-2 bg-white rounded-lg border border-gray-100">
-                            <div class="text-sm font-medium text-primary">${Math.round((result.summary.length / result.text.length) * 100)}%</div>
-                            <div class="text-xs text-secondary">Compression</div>
-                        </div>
-                        <div class="text-center p-2 bg-white rounded-lg border border-gray-100">
-                            <div class="text-sm font-medium text-primary">${result.summary.split('.').length}</div>
-                            <div class="text-xs text-secondary">Sentences</div>
-                            </div>
-                        <div class="text-center p-2 bg-white rounded-lg border border-gray-100">
-                            <div class="text-sm font-medium text-primary">${Math.round(result.summary.split(' ').length / result.summary.split('.').length)}</div>
-                            <div class="text-xs text-secondary">Avg. Length</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+            `;
+        }
+    });
+    
+    // Update summary
+    document.getElementById('summary').textContent = result.summary;
+    
+    // Show the results section
+    analysisResults.classList.remove('hidden');
+    analysisResults.scrollIntoView({ behavior: 'smooth' });
 }
 
 function displayAnalysisHistory(analyses) {
