@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: textscope
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.7
+      - key: DATABASE_URL
+        fromDatabase:
+          name: textscope-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+
+databases:
+  - name: textscope-db
+    databaseName: textscope
+    ipAllowList: [] 
