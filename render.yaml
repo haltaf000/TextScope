@@ -2,7 +2,10 @@ services:
   - type: web
     name: textscope
     env: python
-    buildCommand: pip install -r requirements.txt && python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger'); nltk.download('maxent_ne_chunker'); nltk.download('words'); nltk.download('stopwords'); nltk.download('wordnet')"
+    buildCommand: |
+      pip install -r requirements.txt
+      mkdir -p nltk_data
+      python -c "import nltk; nltk.download('punkt', download_dir='nltk_data'); nltk.download('averaged_perceptron_tagger', download_dir='nltk_data'); nltk.download('maxent_ne_chunker', download_dir='nltk_data'); nltk.download('words', download_dir='nltk_data'); nltk.download('stopwords', download_dir='nltk_data'); nltk.download('wordnet', download_dir='nltk_data')"
     startCommand: gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
@@ -21,6 +24,12 @@ services:
         value: "production"
       - key: PYTHONPATH
         value: "."
+      - key: NLTK_DATA
+        value: "/opt/render/project/src/nltk_data"
+    disk:
+      name: nltk-data
+      mountPath: /opt/render/project/src/nltk_data
+      sizeGB: 1
 
 databases:
   - name: textscope-db

@@ -13,34 +13,55 @@ from collections import Counter
 import re
 from langdetect import detect
 import numpy as np
+import os
+
+# Set NLTK data path to a writable directory in production
+if os.getenv('ENVIRONMENT') == 'production':
+    nltk_data_dir = os.path.join(os.getcwd(), 'nltk_data')
+    os.makedirs(nltk_data_dir, exist_ok=True)
+    nltk.data.path.append(nltk_data_dir)
+
+# Required NLTK data
+REQUIRED_NLTK_DATA = [
+    'punkt',
+    'averaged_perceptron_tagger',
+    'maxent_ne_chunker',
+    'words',
+    'stopwords',
+    'wordnet'
+]
+
+def ensure_nltk_data():
+    """Ensure all required NLTK data is downloaded."""
+    for item in REQUIRED_NLTK_DATA:
+        try:
+            nltk.data.find(f'{item}')
+        except LookupError:
+            try:
+                nltk.download(item, download_dir=nltk_data_dir if os.getenv('ENVIRONMENT') == 'production' else None)
+            except Exception as e:
+                print(f"Error downloading {item}: {str(e)}")
+                raise
 
 # Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.data.find('averaged_perceptron_tagger')
-    nltk.data.find('maxent_ne_chunker')
-    nltk.data.find('words')
-    nltk.data.find('stopwords')
-    nltk.data.find('wordnet')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('averaged_perceptron_tagger')
-    nltk.download('maxent_ne_chunker')
-    nltk.download('words')
-    nltk.download('stopwords')
-    nltk.download('wordnet')
+ensure_nltk_data()
 
 class TextAnalyzer:
     def __init__(self, text: str):
-        self.text = text
-        self.blob = TextBlob(text)
-        self.tokens = word_tokenize(text)
-        self.sentences = sent_tokenize(text)
-        self.stop_words = set(stopwords.words('english'))
-        self.lemmatizer = WordNetLemmatizer()
-        self.word_tokenizer = RegexpTokenizer(r'\w+')
-        # Add professional writing metrics
-        self.professional_metrics = self._calculate_professional_metrics()
+        try:
+            self.text = text
+            self.blob = TextBlob(text)
+            self.tokens = word_tokenize(text)
+            self.sentences = sent_tokenize(text)
+            self.stop_words = set(stopwords.words('english'))
+            self.lemmatizer = WordNetLemmatizer()
+            self.word_tokenizer = RegexpTokenizer(r'\w+')
+            # Add professional writing metrics
+            self.professional_metrics = self._calculate_professional_metrics()
+        except Exception as e:
+            print(f"Initialization error: {str(e)}")
+            print(f"NLTK data path: {nltk.data.path}")
+            raise
 
     def _calculate_professional_metrics(self) -> Dict:
         """Calculate professional writing metrics."""
@@ -320,6 +341,9 @@ def analyze_text(text: str) -> Dict:
     Main function to analyze text.
     """
     try:
+        # Ensure NLTK data is available before analysis
+        ensure_nltk_data()
+        
         analyzer = TextAnalyzer(text)
         
         return {
@@ -336,7 +360,9 @@ def analyze_text(text: str) -> Dict:
         error_detail = {
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "nltk_data_path": nltk.data.path
+            "nltk_data_path": nltk.data.path,
+            "cwd": os.getcwd(),
+            "nltk_data_exists": os.path.exists(nltk_data_dir) if os.getenv('ENVIRONMENT') == 'production' else None
         }
-        print("Text Analysis Error:", error_detail)  # This will show in your logs
+        print("Text Analysis Error:", json.dumps(error_detail, indent=2))  # This will show in your logs
         raise Exception(f"Analysis failed: {str(e)}. NLTK path: {nltk.data.path}")
