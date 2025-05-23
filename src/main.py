@@ -79,6 +79,7 @@ async def read_users_me(
 @app.post("/analyze/", response_model=schemas.TextAnalysis)
 @limiter.limit("20/minute")  # Allow 20 analyses per minute
 async def analyze_text_endpoint(
+    request: Request,
     text_input: schemas.TextAnalysisCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_active_user)
