@@ -1,1 +1,0 @@
-# TextScope package 
