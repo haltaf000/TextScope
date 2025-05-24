@@ -1,4 +1,48 @@
+# Virtual Environment
+venv/
 .venv/
+env/
+.env/
+ENV/
+.ENV/
+virtualenv/
+.virtualenv/
 
-
+# Environment Variables
 .env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.backup
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
