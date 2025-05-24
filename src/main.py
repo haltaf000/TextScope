@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import List
 import json
 import os
@@ -159,6 +159,51 @@ async def analyze_text_endpoint(
                 detail="Text exceeds maximum length of 10,000 characters"
             )
 
+        # Verify NLTK data availability
+        required_data = [
+            ('tokenizers/punkt', 'punkt'),
+            ('taggers/averaged_perceptron_tagger', 'averaged_perceptron_tagger'),
+            ('chunkers/maxent_ne_chunker', 'maxent_ne_chunker'),
+            ('corpora/words', 'words'),
+            ('corpora/stopwords', 'stopwords'),
+            ('corpora/wordnet', 'wordnet'),
+            ('corpora/brown', 'brown')
+        ]
+        
+        missing_data = []
+        for data_path, package_name in required_data:
+            try:
+                nltk.data.find(data_path)
+            except LookupError:
+                missing_data.append(package_name)
+        
+        if missing_data:
+            # Try to download missing data
+            for package in missing_data:
+                try:
+                    nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=True)
+                except Exception as e:
+                    print(f"Failed to download {package}: {str(e)}")
+            
+            # Verify again after download attempt
+            still_missing = []
+            for data_path, package_name in required_data:
+                try:
+                    nltk.data.find(data_path)
+                except LookupError:
+                    still_missing.append(package_name)
+            
+            if still_missing:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": "NLTK data unavailable",
+                        "message": "Required NLTK data is missing",
+                        "missing_packages": still_missing,
+                        "nltk_data_path": NLTK_DATA_PATH
+                    }
+                )
+
         # Perform analysis
         analysis_result = analyze_text(text_input.text)
         
@@ -166,53 +211,48 @@ async def analyze_text_endpoint(
         db_analysis = models.TextAnalysis(
             title=text_input.title,
             text=text_input.text,
-            
-            # Sentiment Analysis
-            sentiment=analysis_result["sentiment_analysis"]["sentiment"],
-            polarity=analysis_result["sentiment_analysis"]["polarity"],
-            subjectivity=analysis_result["sentiment_analysis"]["subjectivity"],
-            sentiment_confidence=analysis_result["sentiment_analysis"]["confidence"],
-            tone=analysis_result["sentiment_analysis"]["tone"],
-            professional_metrics=analysis_result["sentiment_analysis"]["professional_metrics"],
-            
-            # Readability Metrics
-            flesch_score=analysis_result["readability"]["flesch_reading_ease"],
-            avg_sentence_length=analysis_result["readability"]["avg_sentence_length"],
-            word_count=analysis_result["readability"]["word_count"],
-            sentence_count=analysis_result["readability"]["sentence_count"],
-            syllable_count=analysis_result["readability"]["syllable_count"],
-            difficulty_level=analysis_result["readability"]["difficulty_level"],
-            professional_scores=analysis_result["readability"]["professional_scores"],
-            writing_improvements=analysis_result["readability"]["writing_improvements"],
-            
-            # Key Phrases and Entities
-            key_phrases=analysis_result["key_phrases"],
-            named_entities=analysis_result["named_entities"],
-            
-            # Language and Category
-            language_code=analysis_result["language_info"]["language_code"],
-            language_confidence=analysis_result["language_info"]["confidence"],
-            content_category=analysis_result["content_category"]["primary_category"],
-            category_confidence=analysis_result["content_category"]["confidence_score"],
-            category_distribution=analysis_result["content_category"]["category_distribution"],
-            
-            # Summary
-            summary=analysis_result["summary"],
-            
-            user_id=current_user.id
+            user_id=current_user.id,
+            **{k: v for k, v in analysis_result.items() if k in [
+                'sentiment', 'polarity', 'subjectivity', 'sentiment_confidence',
+                'tone', 'professional_metrics', 'flesch_score', 'avg_sentence_length',
+                'word_count', 'sentence_count', 'syllable_count', 'difficulty_level',
+                'professional_scores', 'writing_improvements', 'key_phrases',
+                'named_entities', 'language_code', 'language_confidence',
+                'content_category', 'category_confidence', 'category_distribution',
+                'summary'
+            ]}
         )
         
-        db.add(db_analysis)
-        db.commit()
-        db.refresh(db_analysis)
+        try:
+            db.add(db_analysis)
+            db.commit()
+            db.refresh(db_analysis)
+        except Exception as e:
+            db.rollback()
+            print(f"Database error: {str(e)}")
+            # Continue without database storage
+            return schemas.TextAnalysis(
+                id=-1,  # Temporary ID for failed storage
+                title=text_input.title,
+                text=text_input.text,
+                created_at=datetime.utcnow(),
+                user_id=current_user.id,
+                **analysis_result
+            )
         
         return db_analysis
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        db.rollback()
+        print(f"Analysis error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis failed: {str(e)}"
+            detail={
+                "error": "Analysis failed",
+                "message": str(e),
+                "type": "analysis_error"
+            }
         )
 
 @app.delete("/analyses/{analysis_id}")
