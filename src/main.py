@@ -6,15 +6,68 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import List
 import json
+import os
+import sys
+import nltk
+from textblob import TextBlob
 
 from . import models, schemas, security
 from .database import get_db, engine
 from .text_preprocessor import analyze_text
 
+# Determine environment and set NLTK data path
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+if ENVIRONMENT == 'production':
+    NLTK_DATA_PATH = '/opt/render/project/src/nltk_data'
+else:
+    # For local development, use the default NLTK data path
+    NLTK_DATA_PATH = os.path.join(os.path.expanduser('~'), 'nltk_data')
+
+# Initialize NLTK
+nltk.data.path.append(NLTK_DATA_PATH)
+
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="TextScope", description="Professional Text Analysis Platform")
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize NLTK data and verify availability."""
+    try:
+        # Ensure NLTK data directory exists
+        os.makedirs(NLTK_DATA_PATH, exist_ok=True)
+        
+        # Download required NLTK data if not present
+        required_packages = ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker', 
+                           'words', 'stopwords', 'wordnet']
+        
+        for package in required_packages:
+            try:
+                nltk.data.find(f'tokenizers/{package}')
+            except LookupError:
+                nltk.download(package, download_dir=NLTK_DATA_PATH)
+        
+        # Test NLTK functionality
+        test_text = "This is a test sentence."
+        blob = TextBlob(test_text)
+        _ = blob.sentiment
+        _ = blob.noun_phrases
+        print("NLTK initialization successful")
+        print("NLTK data path:", nltk.data.path)
+        
+        # Only try to list directory if it exists
+        if os.path.exists(NLTK_DATA_PATH):
+            print("Available NLTK data:", os.listdir(NLTK_DATA_PATH))
+        else:
+            print(f"NLTK data directory not found at {NLTK_DATA_PATH}")
+            
+    except Exception as e:
+        print(f"NLTK initialization error: {str(e)}")
+        if ENVIRONMENT == 'development':
+            print("Continuing anyway as we're in development mode...")
+        else:
+            raise RuntimeError(f"Failed to initialize NLTK: {str(e)}")
 
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -219,3 +272,44 @@ async def get_analyses(
 @app.get("/")
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint that verifies NLTK functionality."""
+    try:
+        # Test NLTK functionality
+        test_text = "This is a test sentence."
+        blob = TextBlob(test_text)
+        _ = blob.sentiment
+        _ = blob.noun_phrases
+        
+        # Check NLTK data availability
+        available_data = []
+        if os.path.exists(NLTK_DATA_PATH):
+            available_data = os.listdir(NLTK_DATA_PATH)
+        
+        return {
+            "status": "healthy",
+            "environment": ENVIRONMENT,
+            "nltk_data_path": NLTK_DATA_PATH,
+            "available_nltk_data": available_data,
+            "test_analysis": "success",
+            "nltk_search_paths": nltk.data.path
+        }
+    except Exception as e:
+        error_msg = str(e)
+        if ENVIRONMENT == 'development':
+            # In development, return more detailed error information
+            return {
+                "status": "warning",
+                "environment": "development",
+                "message": "Service running in development mode with warnings",
+                "error": error_msg,
+                "nltk_data_path": NLTK_DATA_PATH,
+                "nltk_search_paths": nltk.data.path
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Service unhealthy: {error_msg}"
+            )

@@ -4,21 +4,31 @@ services:
     env: python
     buildCommand: |
       pip install -r requirements.txt
-      mkdir -p nltk_data
-      python -m textblob.download_corpora
-      python -c "
+      export NLTK_DATA="/opt/render/project/src/nltk_data"
+      mkdir -p $NLTK_DATA
+      python -m textblob.download_corpora lite
+      python -c '
       import nltk
-      nltk.download('punkt', download_dir='nltk_data')
-      nltk.download('averaged_perceptron_tagger', download_dir='nltk_data')
-      nltk.download('maxent_ne_chunker', download_dir='nltk_data')
-      nltk.download('words', download_dir='nltk_data')
-      nltk.download('stopwords', download_dir='nltk_data')
-      nltk.download('wordnet', download_dir='nltk_data')
-      nltk.download('brown', download_dir='nltk_data')
-      nltk.download('conll2000', download_dir='nltk_data')
-      nltk.download('movie_reviews', download_dir='nltk_data')
-      "
-    startCommand: gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT
+      import os
+      nltk.data.path.append(os.environ["NLTK_DATA"])
+      for package in ["punkt", "averaged_perceptron_tagger", "maxent_ne_chunker", "words", "stopwords", "wordnet"]:
+          try:
+              nltk.download(package, download_dir=os.environ["NLTK_DATA"], quiet=True)
+              print(f"Successfully downloaded {package}")
+          except Exception as e:
+              print(f"Error downloading {package}: {str(e)}")
+      '
+      ls -la $NLTK_DATA
+    startCommand: |
+      export NLTK_DATA="/opt/render/project/src/nltk_data"
+      python -c '
+      import nltk
+      import os
+      nltk.data.path.append(os.environ["NLTK_DATA"])
+      print("NLTK data path:", nltk.data.path)
+      print("Available NLTK data:", os.listdir(os.environ["NLTK_DATA"]))
+      '
+      gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.7
@@ -38,12 +48,30 @@ services:
         value: "."
       - key: NLTK_DATA
         value: "/opt/render/project/src/nltk_data"
+      - key: MAX_CONTENT_LENGTH
+        value: "1000000"  # 1MB limit for URL content
+      - key: REQUEST_TIMEOUT
+        value: "30"  # 30 seconds timeout for URL requests
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
     disk:
       name: nltk-data
       mountPath: /opt/render/project/src/nltk_data
       sizeGB: 1
+    healthCheckPath: /health
+    autoDeploy: true
+    numInstances:
+      min: 1
+      max: 3
+      size: basic
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetMemoryPercent: 80
+      targetCPUPercent: 80
 
 databases:
   - name: textscope-db
     databaseName: textscope
-    ipAllowList: [] 
+    ipAllowList: []
+    plan: starter 
