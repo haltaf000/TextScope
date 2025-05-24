@@ -6,34 +6,88 @@ services:
       pip install -r requirements.txt
       export NLTK_DATA="/opt/render/project/src/nltk_data"
       mkdir -p $NLTK_DATA
+      chmod 777 $NLTK_DATA
       # Download TextBlob corpora first
       python -m textblob.download_corpora
-      # Download all required NLTK data
+      # Download all required NLTK data with proper error handling
       python -c '
       import nltk
       import os
-      nltk.data.path.append(os.environ["NLTK_DATA"])
-      required_packages = [
-          "punkt", "averaged_perceptron_tagger", "maxent_ne_chunker",
-          "words", "stopwords", "wordnet", "brown"
-      ]
-      for package in required_packages:
+      import shutil
+      from pathlib import Path
+      
+      nltk_data = "/opt/render/project/src/nltk_data"
+      os.makedirs(nltk_data, exist_ok=True)
+      os.chmod(nltk_data, 0o777)
+      
+      def download_package(package):
           try:
-              nltk.download(package, download_dir=os.environ["NLTK_DATA"], quiet=False)
+              print(f"Downloading {package}...")
+              nltk.download(package, download_dir=nltk_data, quiet=False)
+              # Verify the download
+              if package == "brown":
+                  brown_dir = Path(nltk_data) / "corpora" / "brown"
+                  if not brown_dir.exists() or not any(brown_dir.iterdir()):
+                      print(f"Retrying {package} download...")
+                      shutil.rmtree(brown_dir, ignore_errors=True)
+                      nltk.download(package, download_dir=nltk_data, quiet=False)
               print(f"Successfully downloaded {package}")
           except Exception as e:
               print(f"Error downloading {package}: {str(e)}")
-      print("NLTK data directory contents:")
-      print(os.listdir(os.environ["NLTK_DATA"]))
+              return False
+          return True
+      
+      # Download core packages first
+      core_packages = ["punkt", "averaged_perceptron_tagger", "maxent_ne_chunker", "words", "stopwords"]
+      for package in core_packages:
+          download_package(package)
+      
+      # Download wordnet and brown separately with verification
+      download_package("wordnet")
+      download_package("brown")
+      
+      # Print final directory structure
+      print("\nNLTK Data Directory Structure:")
+      for root, dirs, files in os.walk(nltk_data):
+          level = root.replace(nltk_data, "").count(os.sep)
+          indent = "  " * level
+          print(f"{indent}{os.path.basename(root)}/")
+          for f in files:
+              print(f"{indent}  {f}")
       '
     startCommand: |
       export NLTK_DATA="/opt/render/project/src/nltk_data"
+      # Verify NLTK data before starting
       python -c '
       import nltk
       import os
-      nltk.data.path.append(os.environ["NLTK_DATA"])
-      print("NLTK data path:", nltk.data.path)
-      print("Available NLTK data:", os.listdir(os.environ["NLTK_DATA"]))
+      import sys
+      from pathlib import Path
+      
+      nltk_data = "/opt/render/project/src/nltk_data"
+      required_paths = {
+          "punkt": "tokenizers/punkt",
+          "brown": "corpora/brown",
+          "wordnet": "corpora/wordnet",
+          "stopwords": "corpora/stopwords",
+          "words": "corpora/words",
+          "maxent_ne_chunker": "chunkers/maxent_ne_chunker",
+          "averaged_perceptron_tagger": "taggers/averaged_perceptron_tagger"
+      }
+      
+      missing = []
+      for package, path in required_paths.items():
+          full_path = Path(nltk_data) / path
+          if not full_path.exists():
+              missing.append(package)
+              print(f"Missing {package} at {full_path}")
+      
+      if missing:
+          print(f"Warning: Missing NLTK packages: {missing}")
+      else:
+          print("All NLTK packages verified successfully")
+      
+      print("\nNLTK data paths:", nltk.data.path)
       '
       gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50
     envVars:
@@ -56,9 +110,9 @@ services:
       - key: NLTK_DATA
         value: "/opt/render/project/src/nltk_data"
       - key: MAX_CONTENT_LENGTH
-        value: "1000000"  # 1MB limit for URL content
+        value: "1000000"
       - key: REQUEST_TIMEOUT
-        value: "30"  # 30 seconds timeout for URL requests
+        value: "30"
       - key: RATE_LIMIT_PER_MINUTE
         value: "60"
     disk:
