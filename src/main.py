@@ -41,7 +41,7 @@ async def startup_event():
         # Download required NLTK data if not present
         required_packages = [
             'punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker',
-            'words', 'stopwords', 'wordnet', 'brown'
+            'words', 'stopwords', 'brown'
         ]
         
         missing_packages = []
@@ -166,7 +166,6 @@ async def analyze_text_endpoint(
             ('chunkers/maxent_ne_chunker', 'maxent_ne_chunker'),
             ('corpora/words', 'words'),
             ('corpora/stopwords', 'stopwords'),
-            ('corpora/wordnet', 'wordnet'),
             ('corpora/brown', 'brown')
         ]
         

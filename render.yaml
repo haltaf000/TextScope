@@ -72,8 +72,7 @@ services:
       for package in core_packages:
           download_package(package)
       
-      # Download wordnet and brown with extra verification
-      download_package("wordnet")
+      # Download brown with extra verification
       download_package("brown")
       
       # Verify final state
@@ -108,7 +107,6 @@ services:
       
       required_files = {
           "brown": ["corpora/brown/cats.txt", "corpora/brown/ca01", "corpora/brown/ca02"],
-          "wordnet": ["corpora/wordnet/data.noun", "corpora/wordnet/index.noun"],
           "punkt": ["tokenizers/punkt/english.pickle"],
           "stopwords": ["corpora/stopwords/english"],
           "words": ["corpora/words/en"]

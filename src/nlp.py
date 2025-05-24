@@ -4,8 +4,6 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 from nltk.probability import FreqDist
 from nltk.tokenize import RegexpTokenizer
-from nltk.stem import WordNetLemmatizer
-from nltk.corpus import wordnet
 from typing import Dict, List, Tuple, Optional
 import json
 import math
@@ -21,14 +19,12 @@ try:
     nltk.data.find('maxent_ne_chunker')
     nltk.data.find('words')
     nltk.data.find('stopwords')
-    nltk.data.find('wordnet')
 except LookupError:
     nltk.download('punkt')
     nltk.download('averaged_perceptron_tagger')
     nltk.download('maxent_ne_chunker')
     nltk.download('words')
     nltk.download('stopwords')
-    nltk.download('wordnet')
 
 class TextAnalyzer:
     def __init__(self, text: str):
@@ -37,10 +33,15 @@ class TextAnalyzer:
         self.tokens = word_tokenize(text)
         self.sentences = sent_tokenize(text)
         self.stop_words = set(stopwords.words('english'))
-        self.lemmatizer = WordNetLemmatizer()
         self.word_tokenizer = RegexpTokenizer(r'\w+')
         # Add professional writing metrics
         self.professional_metrics = self._calculate_professional_metrics()
+
+    def _normalize_word(self, word: str) -> str:
+        """Simple word normalization function to replace lemmatization"""
+        # Convert to lowercase and remove basic punctuation
+        word = word.lower().strip('.,!?;:\'\"')
+        return word
 
     def _calculate_professional_metrics(self) -> Dict:
         """Calculate professional writing metrics."""
@@ -264,12 +265,14 @@ class TextAnalyzer:
         }
 
     def get_summary(self, num_sentences: int = 3) -> str:
-        lemmatized_words = [
-            self.lemmatizer.lemmatize(word.lower()) 
+        # Use normalized words instead of lemmatization
+        normalized_words = [
+            self._normalize_word(word)
             for word in self.tokens 
             if word.lower() not in self.stop_words
         ]
-        word_freq = FreqDist(lemmatized_words)
+        
+        word_freq = FreqDist(normalized_words)
         
         named_entities = self.get_named_entities()
         all_entities = list(set(
@@ -282,7 +285,7 @@ class TextAnalyzer:
         
         for i, sentence in enumerate(self.sentences):
             sentence_words = [
-                self.lemmatizer.lemmatize(word.lower())
+                self._normalize_word(word)
                 for word in word_tokenize(sentence)
                 if word.lower() not in self.stop_words
             ]
@@ -334,7 +337,6 @@ class TextAnalyzer:
         
         return summary
 
-
     def _count_syllables(self, word: str) -> int:
         """Helper method to count syllables in a word."""
         word = word.lower()
@@ -383,34 +385,37 @@ def analyze_text(text: str) -> Dict:
     summary = analyzer.get_summary()
     
     return {
-        "sentiment_analysis": {
-            "sentiment": sentiment_analysis["sentiment"],
-            "polarity": sentiment_analysis["polarity"],
-            "subjectivity": sentiment_analysis["subjectivity"],
-            "confidence": sentiment_analysis["confidence"],
-            "tone": sentiment_analysis["tone"],
-            "professional_metrics": sentiment_analysis["professional_metrics"]
-        },
-        "readability": {
-            "flesch_reading_ease": readability["flesch_reading_ease"],
-            "avg_sentence_length": readability["avg_sentence_length"],
-            "word_count": readability["word_count"],
-            "sentence_count": readability["sentence_count"],
-            "syllable_count": readability["syllable_count"],
-            "difficulty_level": readability["difficulty_level"],
-            "professional_scores": readability["professional_scores"],
-            "writing_improvements": readability["writing_improvements"]
-        },
+        # Sentiment Analysis fields
+        "sentiment": sentiment_analysis["sentiment"],
+        "polarity": sentiment_analysis["polarity"],
+        "subjectivity": sentiment_analysis["subjectivity"],
+        "sentiment_confidence": sentiment_analysis["confidence"],
+        "tone": sentiment_analysis["tone"],
+        "professional_metrics": sentiment_analysis["professional_metrics"],
+        
+        # Readability fields
+        "flesch_score": readability["flesch_reading_ease"],
+        "avg_sentence_length": readability["avg_sentence_length"],
+        "word_count": readability["word_count"],
+        "sentence_count": readability["sentence_count"],
+        "syllable_count": readability["syllable_count"],
+        "difficulty_level": readability["difficulty_level"],
+        "professional_scores": readability["professional_scores"],
+        "writing_improvements": readability["writing_improvements"],
+        
+        # Key Phrases and Entities
         "key_phrases": key_phrases,
         "named_entities": named_entities,
-        "language_info": {
-            "language_code": language_info["language_code"],
-            "confidence": language_info["confidence"]
-        },
-        "content_category": {
-            "primary_category": content_category["primary_category"],
-            "confidence_score": content_category["confidence_score"],
-            "category_distribution": content_category["category_distribution"]
-        },
+        
+        # Language Info
+        "language_code": language_info["language_code"],
+        "language_confidence": language_info["confidence"],
+        
+        # Content Category
+        "content_category": content_category["primary_category"],
+        "category_confidence": content_category["confidence_score"],
+        "category_distribution": content_category["category_distribution"],
+        
+        # Summary
         "summary": summary
     }
