@@ -123,12 +123,37 @@ async def analyze_text_endpoint(
                 title=text_input.title,
                 text=text_input.text,
                 user_id=current_user.id,
-                **analysis_result["sentiment_analysis"],
-                **analysis_result["readability"],
+                
+                # Sentiment Analysis
+                sentiment=analysis_result["sentiment_analysis"]["sentiment"],
+                polarity=analysis_result["sentiment_analysis"]["polarity"],
+                subjectivity=analysis_result["sentiment_analysis"]["subjectivity"],
+                sentiment_confidence=analysis_result["sentiment_analysis"]["confidence"],
+                tone=analysis_result["sentiment_analysis"]["tone"],
+                professional_metrics=analysis_result["sentiment_analysis"]["professional_metrics"],
+                
+                # Readability Metrics
+                flesch_score=analysis_result["readability"]["flesch_reading_ease"],
+                avg_sentence_length=analysis_result["readability"]["avg_sentence_length"],
+                word_count=analysis_result["readability"]["word_count"],
+                sentence_count=analysis_result["readability"]["sentence_count"],
+                syllable_count=analysis_result["readability"]["syllable_count"],
+                difficulty_level=analysis_result["readability"]["difficulty_level"],
+                professional_scores=analysis_result["readability"]["professional_scores"],
+                writing_improvements=analysis_result["readability"]["writing_improvements"],
+                
+                # Key Phrases and Entities
                 key_phrases=analysis_result["key_phrases"],
                 named_entities=analysis_result["named_entities"],
-                **analysis_result["language_info"],
-                **analysis_result["content_category"],
+                
+                # Language and Category
+                language_code=analysis_result["language_info"]["language_code"],
+                language_confidence=analysis_result["language_info"]["confidence"],
+                content_category=analysis_result["content_category"]["primary_category"],
+                category_confidence=analysis_result["content_category"]["confidence_score"],
+                category_distribution=analysis_result["content_category"]["category_distribution"],
+                
+                # Summary
                 summary=analysis_result["summary"]
             )
             
