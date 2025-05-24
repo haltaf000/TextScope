@@ -194,64 +194,76 @@
                 <div class="card rounded-xl p-8">
                     <h3 class="text-2xl font-bold mb-6 text-primary">Analysis Results 📈</h3>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Sentiment Analysis -->
-                        <div class="card rounded-lg p-6 col-span-2">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Sentiment Analysis</h4>
-                            <div id="sentimentResult" class="space-y-4">
-                                <div class="sentiment-meter flex items-center space-x-4">
-                                    <div class="w-full bg-gray-100 rounded-full h-4">
-                                        <div class="sentiment-bar h-4 rounded-full transition-all duration-500"></div>
-                                    </div>
-                                    <span class="sentiment-label text-sm font-medium"></span>
+                    <!-- Sentiment Analysis -->
+                    <div class="card rounded-lg p-6 mb-6">
+                        <h4 class="text-lg font-semibold mb-4 text-primary">Sentiment Analysis</h4>
+                        <div id="sentimentResult" class="space-y-4">
+                            <div class="sentiment-meter flex items-center space-x-4">
+                                <div class="w-full bg-gray-100 rounded-full h-4">
+                                    <div class="sentiment-bar h-4 rounded-full transition-all duration-500"></div>
                                 </div>
-                                <div class="grid grid-cols-3 gap-4 mt-4">
-                                    <div class="text-center">
-                                        <div class="text-sm font-medium text-secondary">Polarity</div>
-                                        <div class="sentiment-polarity text-lg font-semibold text-primary"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-sm font-medium text-secondary">Subjectivity</div>
-                                        <div class="sentiment-subjectivity text-lg font-semibold text-primary"></div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-sm font-medium text-secondary">Confidence</div>
-                                        <div class="sentiment-confidence text-lg font-semibold text-primary"></div>
-                                    </div>
+                                <span class="sentiment-label text-sm font-medium"></span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-4 mt-4">
+                                <div class="text-center">
+                                    <div class="text-sm font-medium text-secondary">Polarity</div>
+                                    <div id="polarityValue" class="text-lg font-semibold text-primary"></div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-sm font-medium text-secondary">Subjectivity</div>
+                                    <div id="subjectivityValue" class="text-lg font-semibold text-primary"></div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-sm font-medium text-secondary">Confidence</div>
+                                    <div id="confidenceValue" class="text-lg font-semibold text-primary"></div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-sm font-medium text-secondary">Tone</div>
+                                    <div id="toneValue" class="text-lg font-semibold text-primary"></div>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Other analysis sections -->
-                        <div class="card rounded-lg p-6">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Readability 📚</h4>
-                            <div id="readabilityResult" class="space-y-3"></div>
+                    <!-- Readability Metrics -->
+                    <div class="card rounded-lg p-6 mb-6">
+                        <h4 class="text-lg font-semibold mb-4 text-primary">Readability Metrics</h4>
+                        <div class="grid grid-cols-4 gap-4">
+                            <div class="text-center">
+                                <div class="text-sm font-medium text-secondary">Flesch Score</div>
+                                <div id="readabilityScore" class="text-lg font-semibold text-primary"></div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm font-medium text-secondary">Word Count</div>
+                                <div id="wordCount" class="text-lg font-semibold text-primary"></div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm font-medium text-secondary">Sentence Count</div>
+                                <div id="sentenceCount" class="text-lg font-semibold text-primary"></div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-sm font-medium text-secondary">Avg Sentence Length</div>
+                                <div id="avgSentenceLength" class="text-lg font-semibold text-primary"></div>
+                            </div>
                         </div>
+                    </div>
 
-                        <div class="card rounded-lg p-6">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Key Phrases 🔑</h4>
-                            <div id="keyPhrasesResult" class="space-y-2 max-h-60 overflow-y-auto"></div>
-                        </div>
+                    <!-- Key Phrases -->
+                    <div class="card rounded-lg p-6 mb-6">
+                        <h4 class="text-lg font-semibold mb-4 text-primary">Key Phrases</h4>
+                        <div id="keyPhrases" class="space-y-2"></div>
+                    </div>
 
-                        <div class="card rounded-lg p-6">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Named Entities 🏢</h4>
-                            <div id="entitiesResult" class="space-y-3 max-h-60 overflow-y-auto"></div>
-                        </div>
+                    <!-- Named Entities -->
+                    <div class="card rounded-lg p-6 mb-6">
+                        <h4 class="text-lg font-semibold mb-4 text-primary">Named Entities</h4>
+                        <div id="namedEntities" class="space-y-4"></div>
+                    </div>
 
-                        <div class="card rounded-lg p-6">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Language Information 🌍</h4>
-                            <div id="languageResult" class="space-y-2"></div>
-                        </div>
-
-                        <div class="card rounded-lg p-6">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Content Category 📋</h4>
-                            <div id="categoryResult" class="space-y-3"></div>
-                        </div>
-
-                        <div class="card rounded-lg p-6 col-span-2">
-                            <h4 class="text-lg font-semibold mb-4 text-primary">Summary 📝</h4>
-                            <p id="summaryResult" class="text-secondary"></p>
-                        </div>
+                    <!-- Summary -->
+                    <div class="card rounded-lg p-6">
+                        <h4 class="text-lg font-semibold mb-4 text-primary">Summary</h4>
+                        <p id="summary" class="text-secondary"></p>
                     </div>
                 </div>
             </div>

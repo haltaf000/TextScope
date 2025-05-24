@@ -229,83 +229,104 @@ async function deleteAnalysis(id) {
 
 // Display functions
 function displayAnalysisResults(result) {
-    const analysisResults = document.getElementById('analysisResults');
-    analysisResults.classList.remove('hidden');
-    analysisResults.dataset.currentId = result.id;
-
-    // Sentiment Analysis with enhanced explanations
-    const sentimentResult = document.getElementById('sentimentResult');
-    const sentimentBar = sentimentResult.querySelector('.sentiment-bar');
-    const sentimentLabel = sentimentResult.querySelector('.sentiment-label');
-    
-    // Calculate sentiment bar width and color
-    const polarity = result.polarity;
-    const normalizedPolarity = ((polarity + 1) / 2) * 100; // Convert -1...1 to 0...100
-    sentimentBar.style.width = `${normalizedPolarity}%`;
-    
-    // Set color based on sentiment
-    let sentimentColor;
-    let sentimentExplanation;
-    if (polarity > 0.33) {
-        sentimentColor = '#059669'; // Green for positive
-        sentimentExplanation = "The text expresses a strongly positive sentiment, conveying optimism, approval, or satisfaction.";
-    } else if (polarity < -0.33) {
-        sentimentColor = '#DC2626'; // Red for negative
-        sentimentExplanation = "The text expresses a strongly negative sentiment, conveying criticism, disapproval, or dissatisfaction.";
-    } else {
-        sentimentColor = '#D97706'; // Yellow for neutral
-        sentimentExplanation = "The text maintains a neutral sentiment, presenting information without strong emotional bias.";
-    }
-    
-    sentimentBar.style.backgroundColor = sentimentColor;
-    sentimentLabel.textContent = result.sentiment;
-    sentimentLabel.style.color = sentimentColor;
-
-    // Update all other result sections
-    document.getElementById('polarityValue').textContent = (result.polarity * 100).toFixed(1) + '%';
-    document.getElementById('subjectivityValue').textContent = (result.subjectivity * 100).toFixed(1) + '%';
-    document.getElementById('confidenceValue').textContent = (result.sentiment_confidence * 100).toFixed(1) + '%';
-    document.getElementById('toneValue').textContent = result.tone;
-    
-    // Update metrics
-    document.getElementById('readabilityScore').textContent = result.flesch_score.toFixed(1);
-    document.getElementById('wordCount').textContent = result.word_count;
-    document.getElementById('sentenceCount').textContent = result.sentence_count;
-    document.getElementById('avgSentenceLength').textContent = result.avg_sentence_length.toFixed(1);
-    
-    // Update key phrases
-    const keyPhrasesContainer = document.getElementById('keyPhrases');
-    keyPhrasesContainer.innerHTML = result.key_phrases.map(phrase => `
-        <div class="flex items-center justify-between p-2 rounded bg-gray-50">
-            <span class="text-primary">${phrase.phrase}</span>
-            <span class="text-sm text-secondary">${phrase.importance.toFixed(1)}% relevance</span>
-        </div>
-    `).join('');
-    
-    // Update named entities
-    const entitiesContainer = document.getElementById('namedEntities');
-    entitiesContainer.innerHTML = '';
-    Object.entries(result.named_entities).forEach(([type, entities]) => {
-        if (entities.length > 0) {
-            entitiesContainer.innerHTML += `
-                <div class="mb-4">
-                    <h4 class="font-semibold text-primary mb-2">${type}</h4>
-                    <div class="flex flex-wrap gap-2">
-                        ${entities.map(entity => `
-                            <span class="px-2 py-1 rounded-full bg-gray-100 text-sm">${entity}</span>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
+    try {
+        const analysisResults = document.getElementById('analysisResults');
+        if (!analysisResults) {
+            console.error('Analysis results container not found');
+            return;
         }
-    });
-    
-    // Update summary
-    document.getElementById('summary').textContent = result.summary;
-    
-    // Show the results section
-    analysisResults.classList.remove('hidden');
-    analysisResults.scrollIntoView({ behavior: 'smooth' });
+        
+        analysisResults.classList.remove('hidden');
+        analysisResults.dataset.currentId = result.id;
+
+        // Sentiment Analysis
+        const sentimentResult = document.getElementById('sentimentResult');
+        if (sentimentResult) {
+            const sentimentBar = sentimentResult.querySelector('.sentiment-bar');
+            const sentimentLabel = sentimentResult.querySelector('.sentiment-label');
+            
+            if (sentimentBar && sentimentLabel) {
+                // Calculate sentiment bar width and color
+                const polarity = result.polarity;
+                const normalizedPolarity = ((polarity + 1) / 2) * 100; // Convert -1...1 to 0...100
+                sentimentBar.style.width = `${normalizedPolarity}%`;
+                
+                // Set color based on sentiment
+                let sentimentColor;
+                if (polarity > 0.33) {
+                    sentimentColor = '#059669'; // Green for positive
+                } else if (polarity < -0.33) {
+                    sentimentColor = '#DC2626'; // Red for negative
+                } else {
+                    sentimentColor = '#D97706'; // Yellow for neutral
+                }
+                
+                sentimentBar.style.backgroundColor = sentimentColor;
+                sentimentLabel.textContent = result.sentiment;
+                sentimentLabel.style.color = sentimentColor;
+            }
+        }
+
+        // Update metrics safely
+        const updateElement = (id, value, format = (v) => v) => {
+            const element = document.getElementById(id);
+            if (element && value !== undefined) {
+                element.textContent = format(value);
+            }
+        };
+
+        // Sentiment metrics
+        updateElement('polarityValue', result.polarity, v => (v * 100).toFixed(1) + '%');
+        updateElement('subjectivityValue', result.subjectivity, v => (v * 100).toFixed(1) + '%');
+        updateElement('confidenceValue', result.sentiment_confidence, v => (v * 100).toFixed(1) + '%');
+        updateElement('toneValue', result.tone);
+        
+        // Readability metrics
+        updateElement('readabilityScore', result.flesch_score, v => v.toFixed(1));
+        updateElement('wordCount', result.word_count);
+        updateElement('sentenceCount', result.sentence_count);
+        updateElement('avgSentenceLength', result.avg_sentence_length, v => v.toFixed(1));
+        
+        // Key phrases
+        const keyPhrasesContainer = document.getElementById('keyPhrases');
+        if (keyPhrasesContainer && result.key_phrases) {
+            keyPhrasesContainer.innerHTML = result.key_phrases.map(phrase => `
+                <div class="flex items-center justify-between p-2 rounded bg-gray-50">
+                    <span class="text-primary">${phrase.phrase}</span>
+                    <span class="text-sm text-secondary">${phrase.importance.toFixed(1)}% relevance</span>
+                </div>
+            `).join('');
+        }
+        
+        // Named entities
+        const entitiesContainer = document.getElementById('namedEntities');
+        if (entitiesContainer && result.named_entities) {
+            entitiesContainer.innerHTML = '';
+            Object.entries(result.named_entities).forEach(([type, entities]) => {
+                if (entities.length > 0) {
+                    entitiesContainer.innerHTML += `
+                        <div class="mb-4">
+                            <h4 class="font-semibold text-primary mb-2">${type}</h4>
+                            <div class="flex flex-wrap gap-2">
+                                ${entities.map(entity => `
+                                    <span class="px-2 py-1 rounded-full bg-gray-100 text-sm">${entity}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+        }
+        
+        // Summary
+        updateElement('summary', result.summary);
+        
+        // Scroll to results
+        analysisResults.scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+        console.error('Error displaying analysis results:', error);
+        alert('An error occurred while displaying the analysis results. Please try again.');
+    }
 }
 
 function displayAnalysisHistory(analyses) {
