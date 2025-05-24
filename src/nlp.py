@@ -15,10 +15,18 @@ from langdetect import detect
 import numpy as np
 import os
 
+# Configure NLTK data path
 if os.getenv('ENVIRONMENT') == 'production':
-    nltk_data_dir = os.path.join(os.getcwd(), 'nltk_data')
-    os.makedirs(nltk_data_dir, exist_ok=True)
-    nltk.data.path.append(nltk_data_dir)
+    nltk_data_dir = '/opt/render/project/src/nltk_data'
+    if not os.path.exists(nltk_data_dir):
+        os.makedirs(nltk_data_dir, exist_ok=True)
+    if nltk_data_dir not in nltk.data.path:
+        nltk.data.path.append(nltk_data_dir)
+
+# Print NLTK configuration for debugging
+print(f"NLTK Data Path: {nltk.data.path}")
+print(f"Current Working Directory: {os.getcwd()}")
+print(f"NLTK Data Dir Exists: {os.path.exists(nltk_data_dir if os.getenv('ENVIRONMENT') == 'production' else 'nltk_data')}")
 
 REQUIRED_NLTK_DATA = [
     'punkt',
@@ -279,17 +287,31 @@ class TextAnalyzer:
 
 def analyze_text(text: str) -> Dict:
     try:
+        # First ensure NLTK data is available
         ensure_nltk_data()
-        analyzer = TextAnalyzer(text)
-        return {
-            "sentiment_analysis": analyzer.get_sentiment_analysis(),
-            "readability": analyzer.get_readability_metrics(),
-            "key_phrases": analyzer.extract_key_phrases(),
-            "named_entities": analyzer.get_named_entities(),
-            "language_info": analyzer.get_language_info(),
-            "content_category": analyzer.get_content_category(),
-            "summary": analyzer.get_summary()
-        }
+        
+        # Initialize analyzer with detailed error catching
+        try:
+            analyzer = TextAnalyzer(text)
+        except Exception as init_error:
+            print(f"TextAnalyzer initialization failed: {str(init_error)}")
+            raise Exception(f"Failed to initialize text analyzer: {str(init_error)}")
+        
+        # Perform analysis with detailed error catching
+        try:
+            return {
+                "sentiment_analysis": analyzer.get_sentiment_analysis(),
+                "readability": analyzer.get_readability_metrics(),
+                "key_phrases": analyzer.extract_key_phrases(),
+                "named_entities": analyzer.get_named_entities(),
+                "language_info": analyzer.get_language_info(),
+                "content_category": analyzer.get_content_category(),
+                "summary": analyzer.get_summary()
+            }
+        except Exception as analysis_error:
+            print(f"Analysis operation failed: {str(analysis_error)}")
+            raise Exception(f"Failed during text analysis: {str(analysis_error)}")
+            
     except Exception as e:
         import traceback
         error_detail = {
@@ -297,7 +319,9 @@ def analyze_text(text: str) -> Dict:
             "traceback": traceback.format_exc(),
             "nltk_data_path": nltk.data.path,
             "cwd": os.getcwd(),
-            "nltk_data_exists": os.path.exists(nltk_data_dir) if os.getenv('ENVIRONMENT') == 'production' else None
+            "nltk_data_exists": os.path.exists(nltk_data_dir) if os.getenv('ENVIRONMENT') == 'production' else None,
+            "environment": os.getenv('ENVIRONMENT'),
+            "available_nltk_data": [str(p) for p in nltk.data.path if os.path.exists(p)]
         }
         print("Text Analysis Error:", json.dumps(error_detail, indent=2))
         raise Exception(f"Analysis failed: {str(e)}. NLTK path: {nltk.data.path}")

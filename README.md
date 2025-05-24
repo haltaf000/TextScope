@@ -2,6 +2,10 @@
 
 TextScope is a modern web application that provides advanced text analysis capabilities using Natural Language Processing (NLP). It offers features like sentiment analysis, entity recognition, key phrase extraction, and more.
 
+## Link
+
+https://textscope.onrender.com/
+
 ## Features
 
 - User authentication and authorization

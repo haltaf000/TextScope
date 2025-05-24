@@ -107,60 +107,53 @@ async def analyze_text_endpoint(
         if existing_analysis:
             return existing_analysis
 
-        # Perform analysis
-        analysis_result = analyze_text(text_input.text)
-        
+        # Perform analysis with detailed error handling
+        try:
+            analysis_result = analyze_text(text_input.text)
+        except Exception as analysis_error:
+            print(f"Text analysis failed: {str(analysis_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Text analysis failed: {str(analysis_error)}"
+            )
+
         # Create database entry
-        db_analysis = models.TextAnalysis(
-            title=text_input.title,
-            text=text_input.text,
+        try:
+            db_analysis = models.TextAnalysis(
+                title=text_input.title,
+                text=text_input.text,
+                user_id=current_user.id,
+                **analysis_result["sentiment_analysis"],
+                **analysis_result["readability"],
+                key_phrases=analysis_result["key_phrases"],
+                named_entities=analysis_result["named_entities"],
+                **analysis_result["language_info"],
+                **analysis_result["content_category"],
+                summary=analysis_result["summary"]
+            )
             
-            # Sentiment Analysis
-            sentiment=analysis_result["sentiment_analysis"]["sentiment"],
-            polarity=analysis_result["sentiment_analysis"]["polarity"],
-            subjectivity=analysis_result["sentiment_analysis"]["subjectivity"],
-            sentiment_confidence=analysis_result["sentiment_analysis"]["confidence"],
-            tone=analysis_result["sentiment_analysis"]["tone"],
-            professional_metrics=analysis_result["sentiment_analysis"]["professional_metrics"],
+            db.add(db_analysis)
+            db.commit()
+            db.refresh(db_analysis)
             
-            # Readability Metrics
-            flesch_score=analysis_result["readability"]["flesch_reading_ease"],
-            avg_sentence_length=analysis_result["readability"]["avg_sentence_length"],
-            word_count=analysis_result["readability"]["word_count"],
-            sentence_count=analysis_result["readability"]["sentence_count"],
-            syllable_count=analysis_result["readability"]["syllable_count"],
-            difficulty_level=analysis_result["readability"]["difficulty_level"],
-            professional_scores=analysis_result["readability"]["professional_scores"],
-            writing_improvements=analysis_result["readability"]["writing_improvements"],
+            return db_analysis
             
-            # Key Phrases and Entities
-            key_phrases=analysis_result["key_phrases"],
-            named_entities=analysis_result["named_entities"],
+        except Exception as db_error:
+            db.rollback()
+            print(f"Database operation failed: {str(db_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save analysis results: {str(db_error)}"
+            )
             
-            # Language and Category
-            language_code=analysis_result["language_info"]["language_code"],
-            language_confidence=analysis_result["language_info"]["confidence"],
-            content_category=analysis_result["content_category"]["primary_category"],
-            category_confidence=analysis_result["content_category"]["confidence_score"],
-            category_distribution=analysis_result["content_category"]["category_distribution"],
-            
-            # Summary
-            summary=analysis_result["summary"],
-            
-            user_id=current_user.id
-        )
-        
-        db.add(db_analysis)
-        db.commit()
-        db.refresh(db_analysis)
-        
-        return db_analysis
-        
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
+        print(f"Unexpected error in analyze_text_endpoint: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis failed: {str(e)}"
+            detail=f"An unexpected error occurred: {str(e)}"
         )
 
 @app.delete("/analyses/{analysis_id}")
