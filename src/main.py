@@ -39,21 +39,39 @@ async def startup_event():
         os.makedirs(NLTK_DATA_PATH, exist_ok=True)
         
         # Download required NLTK data if not present
-        required_packages = ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker', 
-                           'words', 'stopwords', 'wordnet']
+        required_packages = [
+            'punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker',
+            'words', 'stopwords', 'wordnet', 'brown'
+        ]
         
+        missing_packages = []
         for package in required_packages:
             try:
-                nltk.data.find(f'tokenizers/{package}')
+                nltk.data.find(f'tokenizers/{package}' if package == 'punkt' 
+                              else f'corpora/{package}' if package in ['brown', 'words', 'stopwords']
+                              else f'taggers/{package}' if package == 'averaged_perceptron_tagger'
+                              else f'chunkers/{package}' if package == 'maxent_ne_chunker'
+                              else package)
             except LookupError:
+                missing_packages.append(package)
+        
+        if missing_packages:
+            print(f"Downloading missing NLTK packages: {missing_packages}")
+            for package in missing_packages:
                 nltk.download(package, download_dir=NLTK_DATA_PATH)
         
-        # Test NLTK functionality
-        test_text = "This is a test sentence."
+        # Test NLTK and TextBlob functionality
+        test_text = "This is a test sentence for NLTK and TextBlob."
+        # Test TextBlob
         blob = TextBlob(test_text)
         _ = blob.sentiment
         _ = blob.noun_phrases
-        print("NLTK initialization successful")
+        # Test NLTK specific functionality
+        tokens = nltk.word_tokenize(test_text)
+        tags = nltk.pos_tag(tokens)
+        entities = nltk.chunk.ne_chunk(tags)
+        
+        print("NLTK and TextBlob initialization successful")
         print("NLTK data path:", nltk.data.path)
         
         # Only try to list directory if it exists

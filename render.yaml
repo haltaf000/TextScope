@@ -6,19 +6,26 @@ services:
       pip install -r requirements.txt
       export NLTK_DATA="/opt/render/project/src/nltk_data"
       mkdir -p $NLTK_DATA
-      python -m textblob.download_corpora lite
+      # Download TextBlob corpora first
+      python -m textblob.download_corpora
+      # Download all required NLTK data
       python -c '
       import nltk
       import os
       nltk.data.path.append(os.environ["NLTK_DATA"])
-      for package in ["punkt", "averaged_perceptron_tagger", "maxent_ne_chunker", "words", "stopwords", "wordnet"]:
+      required_packages = [
+          "punkt", "averaged_perceptron_tagger", "maxent_ne_chunker",
+          "words", "stopwords", "wordnet", "brown"
+      ]
+      for package in required_packages:
           try:
-              nltk.download(package, download_dir=os.environ["NLTK_DATA"], quiet=True)
+              nltk.download(package, download_dir=os.environ["NLTK_DATA"], quiet=False)
               print(f"Successfully downloaded {package}")
           except Exception as e:
               print(f"Error downloading {package}: {str(e)}")
+      print("NLTK data directory contents:")
+      print(os.listdir(os.environ["NLTK_DATA"]))
       '
-      ls -la $NLTK_DATA
     startCommand: |
       export NLTK_DATA="/opt/render/project/src/nltk_data"
       python -c '
