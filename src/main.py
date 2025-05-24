@@ -41,24 +41,42 @@ async def startup_event():
         # Download required NLTK data if not present
         required_packages = [
             'punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker',
-            'words', 'stopwords', 'brown'
+            'words', 'stopwords', 'brown', 'wordnet'
         ]
         
+        # First verify what's missing
         missing_packages = []
         for package in required_packages:
             try:
-                nltk.data.find(f'tokenizers/{package}' if package == 'punkt' 
-                              else f'corpora/{package}' if package in ['brown', 'words', 'stopwords']
-                              else f'taggers/{package}' if package == 'averaged_perceptron_tagger'
-                              else f'chunkers/{package}' if package == 'maxent_ne_chunker'
-                              else package)
+                if package == 'wordnet':
+                    # Special verification for wordnet
+                    nltk.data.find('corpora/wordnet.zip')
+                    # Also verify essential wordnet files
+                    for file in ['data.noun', 'index.noun']:
+                        nltk.data.find(f'corpora/wordnet/{file}')
+                else:
+                    nltk.data.find(f'tokenizers/{package}' if package == 'punkt' 
+                                else f'corpora/{package}' if package in ['brown', 'words', 'stopwords']
+                                else f'taggers/{package}' if package == 'averaged_perceptron_tagger'
+                                else f'chunkers/{package}' if package == 'maxent_ne_chunker'
+                                else package)
             except LookupError:
                 missing_packages.append(package)
         
         if missing_packages:
             print(f"Downloading missing NLTK packages: {missing_packages}")
             for package in missing_packages:
-                nltk.download(package, download_dir=NLTK_DATA_PATH)
+                try:
+                    nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=False)
+                    # Verify the download was successful
+                    if package == 'wordnet':
+                        nltk.data.find('corpora/wordnet.zip')
+                        for file in ['data.noun', 'index.noun']:
+                            nltk.data.find(f'corpora/wordnet/{file}')
+                    print(f"Successfully downloaded {package}")
+                except Exception as e:
+                    print(f"Failed to download {package}: {str(e)}")
+                    raise RuntimeError(f"Failed to download required NLTK package {package}")
         
         # Test NLTK and TextBlob functionality
         test_text = "This is a test sentence for NLTK and TextBlob."
@@ -66,10 +84,15 @@ async def startup_event():
         blob = TextBlob(test_text)
         _ = blob.sentiment
         _ = blob.noun_phrases
-        # Test NLTK specific functionality
+        # Test NLTK specific functionality including WordNet
         tokens = nltk.word_tokenize(test_text)
         tags = nltk.pos_tag(tokens)
         entities = nltk.chunk.ne_chunk(tags)
+        # Test WordNet specifically
+        from nltk.corpus import wordnet
+        synsets = wordnet.synsets('test')
+        if not synsets:
+            raise RuntimeError("WordNet is not working properly")
         
         print("NLTK and TextBlob initialization successful")
         print("NLTK data path:", nltk.data.path)
@@ -159,20 +182,28 @@ async def analyze_text_endpoint(
                 detail="Text exceeds maximum length of 10,000 characters"
             )
 
-        # Verify NLTK data availability
+        # Verify NLTK data availability with special handling for WordNet
         required_data = [
             ('tokenizers/punkt', 'punkt'),
             ('taggers/averaged_perceptron_tagger', 'averaged_perceptron_tagger'),
             ('chunkers/maxent_ne_chunker', 'maxent_ne_chunker'),
             ('corpora/words', 'words'),
             ('corpora/stopwords', 'stopwords'),
-            ('corpora/brown', 'brown')
+            ('corpora/brown', 'brown'),
+            ('corpora/wordnet', 'wordnet')
         ]
         
         missing_data = []
         for data_path, package_name in required_data:
             try:
-                nltk.data.find(data_path)
+                if package_name == 'wordnet':
+                    # Special verification for wordnet
+                    nltk.data.find('corpora/wordnet.zip')
+                    # Also verify essential wordnet files
+                    for file in ['data.noun', 'index.noun']:
+                        nltk.data.find(f'corpora/wordnet/{file}')
+                else:
+                    nltk.data.find(data_path)
             except LookupError:
                 missing_data.append(package_name)
         
@@ -181,6 +212,11 @@ async def analyze_text_endpoint(
             for package in missing_data:
                 try:
                     nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=True)
+                    # Verify WordNet specifically after download
+                    if package == 'wordnet':
+                        nltk.data.find('corpora/wordnet.zip')
+                        for file in ['data.noun', 'index.noun']:
+                            nltk.data.find(f'corpora/wordnet/{file}')
                 except Exception as e:
                     print(f"Failed to download {package}: {str(e)}")
             
@@ -188,20 +224,71 @@ async def analyze_text_endpoint(
             still_missing = []
             for data_path, package_name in required_data:
                 try:
-                    nltk.data.find(data_path)
+                    if package_name == 'wordnet':
+                        nltk.data.find('corpora/wordnet.zip')
+                        for file in ['data.noun', 'index.noun']:
+                            nltk.data.find(f'corpora/wordnet/{file}')
+                    else:
+                        nltk.data.find(data_path)
                 except LookupError:
                     still_missing.append(package_name)
             
             if still_missing:
+                # Try one final time with user directory
+                user_nltk_path = os.path.join(os.path.expanduser('~'), 'nltk_data')
+                os.makedirs(user_nltk_path, exist_ok=True)
+                for package in still_missing:
+                    try:
+                        nltk.download(package, download_dir=user_nltk_path, quiet=True)
+                    except Exception:
+                        pass
+                
+                # Final verification
+                final_missing = []
+                for data_path, package_name in required_data:
+                    try:
+                        if package_name == 'wordnet':
+                            nltk.data.find('corpora/wordnet.zip')
+                            for file in ['data.noun', 'index.noun']:
+                                nltk.data.find(f'corpora/wordnet/{file}')
+                        else:
+                            nltk.data.find(data_path)
+                    except LookupError:
+                        final_missing.append(package_name)
+                
+                if final_missing:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail={
+                            "error": "NLTK data unavailable",
+                            "message": "Required NLTK data is missing",
+                            "missing_packages": final_missing,
+                            "nltk_data_path": NLTK_DATA_PATH
+                        }
+                    )
+
+        # Test WordNet functionality before proceeding
+        try:
+            from nltk.corpus import wordnet
+            test_synsets = wordnet.synsets('test')
+            if not test_synsets:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail={
-                        "error": "NLTK data unavailable",
-                        "message": "Required NLTK data is missing",
-                        "missing_packages": still_missing,
+                        "error": "WordNet verification failed",
+                        "message": "WordNet is not functioning properly",
                         "nltk_data_path": NLTK_DATA_PATH
                     }
                 )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "WordNet error",
+                    "message": str(e),
+                    "nltk_data_path": NLTK_DATA_PATH
+                }
+            )
 
         # Perform analysis
         analysis_result = analyze_text(text_input.text)

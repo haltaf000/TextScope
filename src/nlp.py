@@ -1,7 +1,8 @@
 from textblob import TextBlob
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
+from nltk.corpus import stopwords, wordnet
+from nltk.stem import WordNetLemmatizer
 from nltk.probability import FreqDist
 from nltk.tokenize import RegexpTokenizer
 from typing import Dict, List, Tuple, Optional
@@ -11,20 +12,45 @@ from collections import Counter
 import re
 from langdetect import detect
 import numpy as np
+import os
+
+# Set up NLTK paths
+NLTK_DATA_PATH = os.path.join(os.path.expanduser('~'), 'nltk_data')
+nltk.data.path.append(NLTK_DATA_PATH)
 
 # Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.data.find('averaged_perceptron_tagger')
-    nltk.data.find('maxent_ne_chunker')
-    nltk.data.find('words')
-    nltk.data.find('stopwords')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('averaged_perceptron_tagger')
-    nltk.download('maxent_ne_chunker')
-    nltk.download('words')
-    nltk.download('stopwords')
+def ensure_nltk_data():
+    """Ensure all required NLTK data is available."""
+    try:
+        # First try to find existing data
+        nltk.data.find('corpora/wordnet.zip')
+        nltk.data.find('tokenizers/punkt')
+        nltk.data.find('taggers/averaged_perceptron_tagger')
+        nltk.data.find('chunkers/maxent_ne_chunker')
+        nltk.data.find('corpora/words')
+        nltk.data.find('corpora/stopwords')
+        
+        # Verify WordNet files specifically
+        for file in ['data.noun', 'index.noun']:
+            nltk.data.find(f'corpora/wordnet/{file}')
+            
+    except LookupError:
+        # Download missing data
+        packages = ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker',
+                   'words', 'stopwords', 'wordnet']
+        for package in packages:
+            nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=True)
+            
+        # Verify WordNet specifically
+        try:
+            nltk.data.find('corpora/wordnet.zip')
+            for file in ['data.noun', 'index.noun']:
+                nltk.data.find(f'corpora/wordnet/{file}')
+        except LookupError as e:
+            raise RuntimeError(f"Failed to initialize WordNet: {str(e)}")
+
+# Initialize NLTK data
+ensure_nltk_data()
 
 class TextAnalyzer:
     def __init__(self, text: str):
@@ -34,14 +60,35 @@ class TextAnalyzer:
         self.sentences = sent_tokenize(text)
         self.stop_words = set(stopwords.words('english'))
         self.word_tokenizer = RegexpTokenizer(r'\w+')
+        self.lemmatizer = WordNetLemmatizer()
+        
+        # Verify WordNet is working
+        try:
+            test_synsets = wordnet.synsets('test')
+            if not test_synsets:
+                raise RuntimeError("WordNet is not functioning properly")
+        except Exception as e:
+            raise RuntimeError(f"WordNet error in TextAnalyzer: {str(e)}")
+            
         # Add professional writing metrics
         self.professional_metrics = self._calculate_professional_metrics()
 
+    def _get_wordnet_pos(self, word: str) -> str:
+        """Map POS tag to first character lemmatize() accepts"""
+        tag = nltk.pos_tag([word])[0][1][0].upper()
+        tag_dict = {"J": wordnet.ADJ,
+                   "N": wordnet.NOUN,
+                   "V": wordnet.VERB,
+                   "R": wordnet.ADV}
+        return tag_dict.get(tag, wordnet.NOUN)
+
     def _normalize_word(self, word: str) -> str:
-        """Simple word normalization function to replace lemmatization"""
+        """Normalize word using WordNet lemmatization"""
         # Convert to lowercase and remove basic punctuation
         word = word.lower().strip('.,!?;:\'\"')
-        return word
+        # Get POS tag and lemmatize
+        pos = self._get_wordnet_pos(word)
+        return self.lemmatizer.lemmatize(word, pos)
 
     def _calculate_professional_metrics(self) -> Dict:
         """Calculate professional writing metrics."""
@@ -265,77 +312,55 @@ class TextAnalyzer:
         }
 
     def get_summary(self, num_sentences: int = 3) -> str:
-        # Use normalized words instead of lemmatization
-        normalized_words = [
-            self._normalize_word(word)
-            for word in self.tokens 
+        """
+        Generate a summary using sentence scoring with WordNet lemmatization.
+        """
+        # Lemmatize all words and remove stopwords
+        lemmatized_words = [
+            self.lemmatizer.lemmatize(word.lower(), self._get_wordnet_pos(word))
+            for word in self.tokens
             if word.lower() not in self.stop_words
         ]
         
-        word_freq = FreqDist(normalized_words)
+        # Calculate word frequencies
+        word_freq = FreqDist(lemmatized_words)
         
-        named_entities = self.get_named_entities()
-        all_entities = list(set(
-            [entity for category in named_entities.values() for entity in category]
-        ))
-        key_phrases = [phrase['phrase'].lower() for phrase in self.extract_key_phrases(top_n=5)]
-        
+        # Score sentences based on word frequencies and position
         sentence_scores = {}
-        total_sentences = len(self.sentences)
-        
         for i, sentence in enumerate(self.sentences):
+            # Normalize and lemmatize words in the sentence
+            words = word_tokenize(sentence.lower())
             sentence_words = [
-                self._normalize_word(word)
-                for word in word_tokenize(sentence)
-                if word.lower() not in self.stop_words
+                self.lemmatizer.lemmatize(word, self._get_wordnet_pos(word))
+                for word in words
+                if word not in self.stop_words
             ]
             
-            freq_score = sum(word_freq[word] for word in sentence_words)
-            if sentence_words:
-                freq_score /= len(sentence_words)
+            # Calculate sentence score
+            word_count = len(sentence_words)
+            if word_count > 0:
+                # Base score from word frequencies
+                freq_score = sum(word_freq[word] for word in sentence_words) / word_count
+                # Position score (favor earlier sentences)
+                pos_score = 1.0 / (1 + i)
+                # Length score (penalize very short or very long sentences)
+                length_score = 1.0 if 5 <= word_count <= 25 else 0.5
                 
-            position_score = 1.0
-            if i == 0:
-                position_score = 1.5
-            elif i < total_sentences * 0.1:
-                position_score = 1.2
-            elif i > total_sentences * 0.9:
-                position_score = 1.2
-                
-            entity_score = sum(1 for entity in all_entities 
-                             if entity.lower() in sentence.lower())
-            phrase_score = sum(1 for phrase in key_phrases 
-                             if phrase in sentence.lower())
-            
-            total_score = (
-                freq_score * 0.4 +
-                position_score * 0.25 +
-                entity_score * 0.2 +
-                phrase_score * 0.15
-            )
-            
-            sentence_scores[sentence] = total_score
+                # Combine scores
+                sentence_scores[sentence] = (freq_score * 0.6 + pos_score * 0.3 + length_score * 0.1)
         
-        top_sentences = sorted(sentence_scores.items(), 
-                             key=lambda x: x[1], 
-                             reverse=True)[:num_sentences]
+        # Get top sentences
+        summary_sentences = sorted(
+            sentence_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:num_sentences]
         
-        unique_sentences = []
-        seen_words = set()
-        for sent, score in top_sentences:
-            sent_words = set(word_tokenize(sent.lower()))
-            if len(sent_words - seen_words)/len(sent_words) > 0.6:
-                unique_sentences.append((sent, score))
-                seen_words.update(sent_words)
+        # Sort sentences by their original order
+        summary_sentences.sort(key=lambda x: self.sentences.index(x[0]))
         
-        ordered_sentences = sorted(unique_sentences[:num_sentences], 
-                                 key=lambda item: self.sentences.index(item[0]))
-        
-        summary = ' '.join([sent for sent, _ in ordered_sentences])
-        summary = re.sub(r'\b(However|Moreover|Furthermore|Nevertheless),?\s+', '', summary)
-        summary = summary[0].upper() + summary[1:]
-        
-        return summary
+        # Join sentences
+        return ' '.join(sentence for sentence, score in summary_sentences)
 
     def _count_syllables(self, word: str) -> int:
         """Helper method to count syllables in a word."""

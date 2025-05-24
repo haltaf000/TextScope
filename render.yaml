@@ -68,7 +68,7 @@ services:
           return False
       
       # Download core packages first
-      core_packages = ["punkt", "averaged_perceptron_tagger", "maxent_ne_chunker", "words", "stopwords"]
+      core_packages = ["punkt", "averaged_perceptron_tagger", "maxent_ne_chunker", "words", "stopwords", "wordnet"]
       for package in core_packages:
           download_package(package)
       
@@ -109,7 +109,8 @@ services:
           "brown": ["corpora/brown/cats.txt", "corpora/brown/ca01", "corpora/brown/ca02"],
           "punkt": ["tokenizers/punkt/english.pickle"],
           "stopwords": ["corpora/stopwords/english"],
-          "words": ["corpora/words/en"]
+          "words": ["corpora/words/en"],
+          "wordnet": ["corpora/wordnet/data.noun", "corpora/wordnet/index.noun"]
       }
       
       def check_files(base_path, files):
