@@ -264,23 +264,76 @@ class TextAnalyzer:
         }
 
     def get_summary(self, num_sentences: int = 3) -> str:
-        """
-        Generate a text summary using extractive summarization.
-        """
-        # Calculate sentence scores based on word frequency
-        word_freq = FreqDist(word.lower() for word in self.tokens if word.lower() not in self.stop_words)
+        lemmatized_words = [
+            self.lemmatizer.lemmatize(word.lower()) 
+            for word in self.tokens 
+            if word.lower() not in self.stop_words
+        ]
+        word_freq = FreqDist(lemmatized_words)
+        
+        named_entities = self.get_named_entities()
+        all_entities = list(set(
+            [entity for category in named_entities.values() for entity in category]
+        ))
+        key_phrases = [phrase['phrase'].lower() for phrase in self.extract_key_phrases(top_n=5)]
+        
         sentence_scores = {}
+        total_sentences = len(self.sentences)
         
-        for sentence in self.sentences:
-            sentence_words = word_tokenize(sentence.lower())
-            score = sum(word_freq[word] for word in sentence_words if word not in self.stop_words)
-            sentence_scores[sentence] = score
+        for i, sentence in enumerate(self.sentences):
+            sentence_words = [
+                self.lemmatizer.lemmatize(word.lower())
+                for word in word_tokenize(sentence)
+                if word.lower() not in self.stop_words
+            ]
+            
+            freq_score = sum(word_freq[word] for word in sentence_words)
+            if sentence_words:
+                freq_score /= len(sentence_words)
+                
+            position_score = 1.0
+            if i == 0:
+                position_score = 1.5
+            elif i < total_sentences * 0.1:
+                position_score = 1.2
+            elif i > total_sentences * 0.9:
+                position_score = 1.2
+                
+            entity_score = sum(1 for entity in all_entities 
+                             if entity.lower() in sentence.lower())
+            phrase_score = sum(1 for phrase in key_phrases 
+                             if phrase in sentence.lower())
+            
+            total_score = (
+                freq_score * 0.4 +
+                position_score * 0.25 +
+                entity_score * 0.2 +
+                phrase_score * 0.15
+            )
+            
+            sentence_scores[sentence] = total_score
         
-        # Get top N sentences
-        summary_sentences = sorted(sentence_scores.items(), key=lambda x: x[1], reverse=True)[:num_sentences]
-        summary = ' '.join(sentence for sentence, score in sorted(summary_sentences, key=lambda x: self.sentences.index(x[0])))
+        top_sentences = sorted(sentence_scores.items(), 
+                             key=lambda x: x[1], 
+                             reverse=True)[:num_sentences]
+        
+        unique_sentences = []
+        seen_words = set()
+        for sent, score in top_sentences:
+            sent_words = set(word_tokenize(sent.lower()))
+            if len(sent_words - seen_words)/len(sent_words) > 0.6:
+                unique_sentences.append((sent, score))
+                seen_words.update(sent_words)
+        
+        ordered_sentences = sorted(unique_sentences[:num_sentences], 
+                                 key=lambda item: self.sentences.index(item[0]))
+        
+        summary = ' '.join([sent for sent, _ in ordered_sentences])
+        summary = re.sub(r'\b(However|Moreover|Furthermore|Nevertheless),?\s+', '', summary)
+        summary = summary[0].upper() + summary[1:]
         
         return summary
+
 
     def _count_syllables(self, word: str) -> int:
         """Helper method to count syllables in a word."""

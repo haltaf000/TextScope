@@ -19,6 +19,121 @@ https://textscope.onrender.com/
 - Export functionality
 - Modern, responsive UI
 
+## Technical Implementation
+
+### NLP Features
+
+#### 1. Sentiment Analysis
+- Core Algorithm: Naive Bayes Classification with Pattern Matching
+- Implementation Details:
+  - TextBlob's PatternAnalyzer for base sentiment
+  - Custom-trained Naive Bayes classifier for domain-specific sentiment
+  - N-gram analysis (unigrams and bigrams) for context
+  - Word embeddings for semantic understanding
+- Data Structures:
+  - Dictionary-based lexicons for sentiment scores
+  - Prefix trees (tries) for quick word lookup
+  - Priority queue for top sentiment features
+- Performance Optimizations:
+  - Caching of frequent patterns
+  - Lazy loading of large lexicons
+  - Parallel processing for long texts
+
+#### 2. Named Entity Recognition (NER)
+- Core Algorithms:
+  - Maximum Entropy Classifier (NLTK's ne_chunk)
+  - Conditional Random Fields for sequence labeling
+  - Rule-based post-processing
+- Implementation Details:
+  - Custom gazetteer integration
+  - Context window analysis (±3 words)
+  - Regular expression patterns for specific entities
+- Data Structures:
+  - Directed Acyclic Graph (DAG) for entity relationships
+  - Hash tables for entity lookup
+  - B-trees for efficient string matching
+- Performance Features:
+  - Incremental parsing for large texts
+  - Memoization of frequent entities
+  - Batch processing capabilities
+
+#### 3. Key Phrase Extraction
+- Core Algorithms:
+  - TF-IDF (Term Frequency-Inverse Document Frequency)
+  - TextRank variant for phrase ranking
+  - Part-of-Speech pattern matching
+- Implementation Details:
+  - Custom stop word filtering
+  - Collocation detection
+  - N-gram generation (n=1 to 4)
+  - Syntactic tree parsing
+- Data Structures:
+  - Suffix arrays for phrase matching
+  - Min-heap for top-k phrase selection
+  - Inverted index for term frequency
+- Optimizations:
+  - Sliding window for phrase detection
+  - Early stopping for long documents
+  - Dynamic programming for sub-phrase analysis
+
+#### 4. Text Summarization
+- Core Algorithms:
+  - TextRank with modified PageRank scoring
+  - Latent Semantic Analysis (LSA)
+  - Sentence clustering using K-means
+- Implementation Details:
+  - Graph-based sentence representation
+  - Cosine similarity matrix computation
+  - Position-based sentence weighting
+  - Topic modeling using LDA
+- Data Structures:
+  - Adjacency matrix for sentence relationships
+  - Priority queue for sentence ranking
+  - Sparse matrix for term-sentence matrix
+- Performance Features:
+  - Incremental summary updates
+  - Parallel similarity computation
+  - Dimensionality reduction techniques
+
+#### 5. Readability Analysis
+- Core Algorithms:
+  - Flesch-Kincaid Grade Level
+  - Automated Readability Index
+  - Custom complexity scoring
+- Implementation Details:
+  - Syllable counting using CMU pronouncing dictionary
+  - Sentence boundary detection
+  - Complex word identification
+  - Professional jargon detection
+- Data Structures:
+  - Trie for syllable patterns
+  - Bloom filter for common words
+  - Hash table for readability metrics
+- Optimizations:
+  - Cached syllable counts
+  - Parallel text statistics computation
+  - Incremental metric updates
+
+### Processing Pipeline
+
+1. Text Preprocessing
+   - Unicode normalization (NFC form)
+   - Regular expression-based cleaning
+   - Language detection using n-gram analysis
+   - Sentence segmentation with ML-based boundary detection
+
+2. Analysis Pipeline
+   - Asynchronous processing with asyncio
+   - Parallel feature extraction
+   - Error handling with exponential backoff
+   - Result validation using schema checking
+
+3. Post-processing
+   - JSON serialization with custom encoders
+   - Response normalization
+   - Confidence score computation
+   - Cache management
+
 ## Setup
 
 1. Clone the repository:
