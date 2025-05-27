@@ -1,10 +1,6 @@
 from textblob import TextBlob
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords, wordnet
-from nltk.stem import WordNetLemmatizer
-from nltk.probability import FreqDist
-from nltk.tokenize import RegexpTokenizer
+import spacy
+from spacy.lang.en.stop_words import STOP_WORDS
 from typing import Dict, List, Tuple, Optional
 import json
 import math
@@ -14,81 +10,62 @@ from langdetect import detect
 import numpy as np
 import os
 
-# Set up NLTK paths
-NLTK_DATA_PATH = os.path.join(os.path.expanduser('~'), 'nltk_data')
-nltk.data.path.append(NLTK_DATA_PATH)
-
-# Download required NLTK data
-def ensure_nltk_data():
-    """Ensure all required NLTK data is available."""
+# Load spaCy model
+def load_spacy_model():
+    """Load spaCy model with error handling."""
     try:
-        # First try to find existing data
-        nltk.data.find('corpora/wordnet.zip')
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('taggers/averaged_perceptron_tagger')
-        nltk.data.find('chunkers/maxent_ne_chunker')
-        nltk.data.find('corpora/words')
-        nltk.data.find('corpora/stopwords')
-        
-        # Verify WordNet files specifically
-        for file in ['data.noun', 'index.noun']:
-            nltk.data.find(f'corpora/wordnet/{file}')
-            
-    except LookupError:
-        # Download missing data
-        packages = ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker',
-                   'words', 'stopwords', 'wordnet']
-        for package in packages:
-            nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=True)
-            
-        # Verify WordNet specifically
-        try:
-            nltk.data.find('corpora/wordnet.zip')
-            for file in ['data.noun', 'index.noun']:
-                nltk.data.find(f'corpora/wordnet/{file}')
-        except LookupError as e:
-            raise RuntimeError(f"Failed to initialize WordNet: {str(e)}")
+        # Try to load the model
+        nlp = spacy.load("en_core_web_sm")
+        return nlp
+    except OSError:
+        # If model not found, provide helpful error message
+        raise RuntimeError(
+            "spaCy English model 'en_core_web_sm' not found. "
+            "Please install it using: python -m spacy download en_core_web_sm"
+        )
 
-# Initialize NLTK data
-ensure_nltk_data()
+# Initialize spaCy
+nlp = load_spacy_model()
 
 class TextAnalyzer:
     def __init__(self, text: str):
         self.text = text
         self.blob = TextBlob(text)
-        self.tokens = word_tokenize(text)
-        self.sentences = sent_tokenize(text)
-        self.stop_words = set(stopwords.words('english'))
-        self.word_tokenizer = RegexpTokenizer(r'\w+')
-        self.lemmatizer = WordNetLemmatizer()
-        
-        # Verify WordNet is working
-        try:
-            test_synsets = wordnet.synsets('test')
-            if not test_synsets:
-                raise RuntimeError("WordNet is not functioning properly")
-        except Exception as e:
-            raise RuntimeError(f"WordNet error in TextAnalyzer: {str(e)}")
+        self.doc = nlp(text)
+        self.tokens = [token.text for token in self.doc if not token.is_space]
+        self.sentences = [sent.text.strip() for sent in self.doc.sents]
+        self.stop_words = STOP_WORDS
             
         # Add professional writing metrics
         self.professional_metrics = self._calculate_professional_metrics()
 
     def _get_wordnet_pos(self, word: str) -> str:
-        """Map POS tag to first character lemmatize() accepts"""
-        tag = nltk.pos_tag([word])[0][1][0].upper()
-        tag_dict = {"J": wordnet.ADJ,
-                   "N": wordnet.NOUN,
-                   "V": wordnet.VERB,
-                   "R": wordnet.ADV}
-        return tag_dict.get(tag, wordnet.NOUN)
+        """Map POS tag to first character lemmatize() accepts (for TextBlob compatibility)"""
+        # Get spaCy POS tag
+        token = nlp(word)[0]
+        pos = token.pos_
+        
+        # Map to WordNet format for TextBlob compatibility
+        if pos.startswith('ADJ'):
+            return 'a'  # adjective
+        elif pos.startswith('NOUN'):
+            return 'n'  # noun
+        elif pos.startswith('VERB'):
+            return 'v'  # verb
+        elif pos.startswith('ADV'):
+            return 'r'  # adverb
+        else:
+            return 'n'  # default to noun
 
     def _normalize_word(self, word: str) -> str:
-        """Normalize word using WordNet lemmatization"""
+        """Normalize word using spaCy lemmatization"""
         # Convert to lowercase and remove basic punctuation
         word = word.lower().strip('.,!?;:\'\"')
-        # Get POS tag and lemmatize
-        pos = self._get_wordnet_pos(word)
-        return self.lemmatizer.lemmatize(word, pos)
+        # Use spaCy for lemmatization
+        doc = nlp(word)
+        if doc:
+            return doc[0].lemma_
+        return word
 
     def _calculate_professional_metrics(self) -> Dict:
         """Calculate professional writing metrics."""
@@ -100,26 +77,32 @@ class TextAnalyzer:
             "clarity_score": 0
         }
         
-        # Count passive voice
-        for sentence in self.sentences:
-            if re.search(r'\b(am|is|are|was|were|be|been|being)\s+\w+ed\b', sentence, re.IGNORECASE):
-                metrics["passive_voice_count"] += 1
+        # Count passive voice using spaCy dependency parsing
+        for sent in self.doc.sents:
+            # Look for passive voice patterns
+            for token in sent:
+                if token.dep_ == "auxpass" or (token.dep_ == "nsubjpass"):
+                    metrics["passive_voice_count"] += 1
+                    break
             
             # Count long sentences (more than 20 words)
-            if len(word_tokenize(sentence)) > 20:
+            sent_tokens = [t for t in sent if not t.is_space and not t.is_punct]
+            if len(sent_tokens) > 20:
                 metrics["long_sentences"] += 1
         
         # Count complex words (more than 2 syllables)
-        for word in self.tokens:
-            if self._count_syllables(word) > 2:
-                metrics["complex_words"] += 1
+        for token in self.doc:
+            if not token.is_space and not token.is_punct:
+                if self._count_syllables(token.text) > 2:
+                    metrics["complex_words"] += 1
         
         # Find repetitive words
-        word_freq = Counter(word.lower() for word in self.tokens if word.lower() not in self.stop_words)
+        word_freq = Counter(token.lemma_.lower() for token in self.doc 
+                          if not token.is_stop and not token.is_punct and not token.is_space)
         metrics["repetitive_words"] = sum(1 for word, count in word_freq.items() if count > 3)
         
         # Calculate clarity score (0-100)
-        total_words = len(self.tokens)
+        total_words = len([t for t in self.doc if not t.is_space and not t.is_punct])
         if total_words > 0:
             clarity_factors = [
                 (1 - metrics["passive_voice_count"] / len(self.sentences)) * 25,  # Passive voice impact
@@ -167,9 +150,11 @@ class TextAnalyzer:
         """
         Enhanced readability metrics with professional writing insights.
         """
-        word_count = len(self.word_tokenizer.tokenize(self.text))
+        # Count words excluding punctuation and spaces
+        word_count = len([token for token in self.doc if not token.is_space and not token.is_punct])
         sentence_count = len(self.sentences)
-        syllable_count = sum(self._count_syllables(word) for word in self.tokens)
+        syllable_count = sum(self._count_syllables(token.text) for token in self.doc 
+                           if not token.is_space and not token.is_punct)
         
         # Average sentence length
         avg_sentence_length = word_count / sentence_count if sentence_count > 0 else 0
@@ -217,51 +202,334 @@ class TextAnalyzer:
         
         return improvements
 
-    def extract_key_phrases(self, top_n: int = 10) -> List[Dict]:
+    def extract_key_phrases(self, top_n: int = 15) -> List[Dict]:
         """
-        Extract key phrases with relevance scores.
+        Advanced key phrase extraction with multiple algorithms and enhanced features.
         """
-        # Get noun phrases from TextBlob
-        noun_phrases = list(set(self.blob.noun_phrases))
-        
-        # Calculate TF-IDF-like scores for phrases
         phrase_scores = []
-        total_phrases = len(noun_phrases)
         
-        for phrase in noun_phrases:
+        # 1. Extract noun phrases from TextBlob
+        textblob_phrases = list(set(str(phrase) for phrase in self.blob.noun_phrases))
+        
+        # 2. Extract noun chunks from spaCy
+        spacy_noun_chunks = [chunk.text.strip() for chunk in self.doc.noun_chunks if len(chunk.text.strip()) > 2]
+        
+        # 3. Extract verb phrases (verb + object patterns)
+        verb_phrases = self._extract_verb_phrases()
+        
+        # 4. Extract multi-word expressions using dependency parsing
+        dependency_phrases = self._extract_dependency_phrases()
+        
+        # 5. Extract significant single words (high TF-IDF)
+        significant_words = self._extract_significant_words()
+        
+        # Combine all phrase sources
+        all_phrases = list(set(textblob_phrases + spacy_noun_chunks + verb_phrases + dependency_phrases + significant_words))
+        
+        # Filter out very short or very long phrases
+        all_phrases = [phrase for phrase in all_phrases if 2 <= len(phrase.split()) <= 6 and len(phrase) >= 3]
+        
+        total_phrases = len(all_phrases)
+        if total_phrases == 0:
+            return []
+        
+        # Calculate advanced scores for each phrase
+        for phrase in all_phrases:
+            phrase_clean = phrase.lower().strip()
+            
+            # Basic frequency metrics
+            frequency = self.text.lower().count(phrase_clean)
+            if frequency == 0:
+                continue
+                
             # Term frequency
-            tf = self.text.lower().count(phrase.lower()) / len(self.tokens)
+            tf = frequency / len(self.tokens)
+            
             # Inverse document frequency (simplified)
-            idf = math.log(total_phrases / (1 + self.text.lower().count(phrase.lower())))
+            idf = math.log(total_phrases / (1 + frequency))
+            
             # TF-IDF score
-            score = tf * idf
+            tfidf_score = tf * idf
+            
+            # Advanced scoring factors
+            phrase_length_score = self._calculate_phrase_length_score(phrase)
+            pos_diversity_score = self._calculate_pos_diversity_score(phrase)
+            semantic_coherence_score = self._calculate_semantic_coherence_score(phrase)
+            position_score = self._calculate_position_score(phrase)
+            capitalization_score = self._calculate_capitalization_score(phrase)
+            
+            # Combine scores with weights
+            final_score = (
+                tfidf_score * 0.35 +
+                phrase_length_score * 0.15 +
+                pos_diversity_score * 0.15 +
+                semantic_coherence_score * 0.15 +
+                position_score * 0.10 +
+                capitalization_score * 0.10
+            )
+            
+            # Determine phrase type and category
+            phrase_type = self._classify_phrase_type(phrase)
+            phrase_category = self._classify_phrase_category(phrase)
             
             phrase_scores.append({
-                "phrase": phrase,
-                "relevance_score": round(score, 4),
-                "frequency": self.text.lower().count(phrase.lower()),
-                "importance": round(score * 100, 2)  # Add importance score for visualization
+                "phrase": phrase.strip(),
+                "relevance_score": round(final_score, 4),
+                "frequency": frequency,
+                "importance": round(final_score * 100, 2),
+                "tfidf_score": round(tfidf_score, 4),
+                "phrase_type": phrase_type,
+                "category": phrase_category,
+                "length_score": round(phrase_length_score, 3),
+                "pos_diversity": round(pos_diversity_score, 3),
+                "semantic_coherence": round(semantic_coherence_score, 3),
+                "position_score": round(position_score, 3),
+                "capitalization_score": round(capitalization_score, 3),
+                "word_count": len(phrase.split()),
+                "char_count": len(phrase)
             })
         
         # Sort by relevance score and return top N
-        return sorted(phrase_scores, key=lambda x: x['relevance_score'], reverse=True)[:top_n]
+        sorted_phrases = sorted(phrase_scores, key=lambda x: x['relevance_score'], reverse=True)
+        
+        # Add ranking information
+        for i, phrase in enumerate(sorted_phrases[:top_n]):
+            phrase['rank'] = i + 1
+            phrase['percentile'] = round((1 - i / len(sorted_phrases)) * 100, 1)
+        
+        return sorted_phrases[:top_n]
+    
+    def _extract_verb_phrases(self) -> List[str]:
+        """Extract verb phrases using dependency parsing."""
+        verb_phrases = []
+        
+        for token in self.doc:
+            if token.pos_ == "VERB" and not token.is_stop:
+                # Find objects and complements of the verb
+                phrase_parts = [token.text]
+                
+                for child in token.children:
+                    if child.dep_ in ["dobj", "pobj", "acomp", "xcomp"] and not child.is_stop:
+                        phrase_parts.append(child.text)
+                        # Add children of the object
+                        for grandchild in child.children:
+                            if grandchild.dep_ in ["amod", "compound"] and not grandchild.is_stop:
+                                phrase_parts.insert(-1, grandchild.text)
+                
+                if len(phrase_parts) > 1:
+                    verb_phrases.append(" ".join(phrase_parts))
+        
+        return list(set(verb_phrases))
+    
+    def _extract_dependency_phrases(self) -> List[str]:
+        """Extract phrases based on dependency relationships."""
+        dependency_phrases = []
+        
+        for token in self.doc:
+            if token.pos_ in ["NOUN", "PROPN"] and not token.is_stop:
+                phrase_parts = [token.text]
+                
+                # Add modifiers
+                for child in token.children:
+                    if child.dep_ in ["amod", "compound", "nmod"] and not child.is_stop:
+                        if child.i < token.i:
+                            phrase_parts.insert(0, child.text)
+                        else:
+                            phrase_parts.append(child.text)
+                
+                if len(phrase_parts) > 1:
+                    dependency_phrases.append(" ".join(phrase_parts))
+        
+        return list(set(dependency_phrases))
+    
+    def _extract_significant_words(self) -> List[str]:
+        """Extract significant single words based on TF-IDF."""
+        word_scores = {}
+        
+        for token in self.doc:
+            if (not token.is_stop and not token.is_punct and not token.is_space 
+                and token.pos_ in ["NOUN", "PROPN", "ADJ", "VERB"] and len(token.text) > 3):
+                
+                word = token.lemma_.lower()
+                frequency = sum(1 for t in self.doc if t.lemma_.lower() == word)
+                
+                if frequency >= 2:  # Only include words that appear at least twice
+                    tf = frequency / len(self.tokens)
+                    idf = math.log(len(self.tokens) / frequency)
+                    word_scores[token.text] = tf * idf
+        
+        # Return top significant words
+        sorted_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)
+        return [word for word, score in sorted_words[:10]]
+    
+    def _calculate_phrase_length_score(self, phrase: str) -> float:
+        """Calculate score based on phrase length (optimal length gets higher score)."""
+        word_count = len(phrase.split())
+        if word_count == 2:
+            return 1.0
+        elif word_count == 3:
+            return 0.9
+        elif word_count == 4:
+            return 0.7
+        elif word_count == 1:
+            return 0.6
+        else:
+            return 0.4
+    
+    def _calculate_pos_diversity_score(self, phrase: str) -> float:
+        """Calculate score based on part-of-speech diversity."""
+        phrase_doc = nlp(phrase)
+        pos_tags = set(token.pos_ for token in phrase_doc if not token.is_punct)
+        
+        # Reward phrases with good POS diversity
+        if len(pos_tags) >= 2:
+            return 1.0
+        else:
+            return 0.5
+    
+    def _calculate_semantic_coherence_score(self, phrase: str) -> float:
+        """Calculate semantic coherence using word vectors."""
+        try:
+            phrase_doc = nlp(str(phrase))  # Ensure phrase is a string
+            tokens = [token for token in phrase_doc if not token.is_punct and not token.is_space]
+            
+            if len(tokens) < 2:
+                return 0.5
+            
+            # Check if tokens have vectors (only for models with word vectors)
+            vector_tokens = [token for token in tokens if token.has_vector]
+            
+            if len(vector_tokens) < 2:
+                # Fallback: use POS tag diversity as a proxy for coherence
+                pos_tags = set(token.pos_ for token in tokens)
+                return min(1.0, len(pos_tags) / 3.0)  # Normalize to 0-1
+            
+            # Calculate average similarity between words in the phrase
+            similarities = []
+            for i in range(len(vector_tokens)):
+                for j in range(i + 1, len(vector_tokens)):
+                    try:
+                        similarity = vector_tokens[i].similarity(vector_tokens[j])
+                        similarities.append(similarity)
+                    except:
+                        continue
+            
+            if similarities:
+                return sum(similarities) / len(similarities)
+            else:
+                return 0.5
+        except Exception as e:
+            # Fallback calculation based on phrase structure
+            words = str(phrase).split()
+            if len(words) <= 1:
+                return 0.3
+            elif len(words) == 2:
+                return 0.7
+            else:
+                return 0.6
+    
+    def _calculate_position_score(self, phrase: str) -> float:
+        """Calculate score based on phrase position in text (earlier = higher score)."""
+        phrase_lower = phrase.lower()
+        first_occurrence = self.text.lower().find(phrase_lower)
+        
+        if first_occurrence == -1:
+            return 0.0
+        
+        # Normalize position (0 to 1, where 0 is beginning)
+        position_ratio = first_occurrence / len(self.text)
+        
+        # Higher score for phrases appearing earlier
+        return 1.0 - position_ratio
+    
+    def _calculate_capitalization_score(self, phrase: str) -> float:
+        """Calculate score based on capitalization patterns."""
+        words = phrase.split()
+        capitalized_words = sum(1 for word in words if word[0].isupper())
+        
+        if capitalized_words == len(words):
+            return 1.0  # All words capitalized (likely proper nouns)
+        elif capitalized_words > 0:
+            return 0.7  # Some words capitalized
+        else:
+            return 0.3  # No capitalization
+    
+    def _classify_phrase_type(self, phrase: str) -> str:
+        """Classify the type of phrase."""
+        phrase_doc = nlp(phrase)
+        pos_tags = [token.pos_ for token in phrase_doc if not token.is_punct]
+        
+        if any(pos in pos_tags for pos in ["PROPN"]):
+            return "proper_noun"
+        elif "VERB" in pos_tags:
+            return "verb_phrase"
+        elif all(pos in ["NOUN", "ADJ"] for pos in pos_tags):
+            return "noun_phrase"
+        elif "ADJ" in pos_tags:
+            return "descriptive"
+        else:
+            return "general"
+    
+    def _classify_phrase_category(self, phrase: str) -> str:
+        """Classify the semantic category of the phrase."""
+        phrase_lower = phrase.lower()
+        
+        # Define category keywords
+        categories = {
+            "person": ["person", "people", "individual", "human", "man", "woman", "child"],
+            "organization": ["company", "corporation", "organization", "business", "firm", "agency"],
+            "location": ["place", "location", "city", "country", "region", "area", "site"],
+            "technology": ["technology", "software", "system", "platform", "tool", "device"],
+            "concept": ["concept", "idea", "theory", "principle", "method", "approach"],
+            "action": ["action", "process", "activity", "operation", "function", "task"],
+            "quality": ["quality", "characteristic", "feature", "attribute", "property"]
+        }
+        
+        # Check for category matches
+        for category, keywords in categories.items():
+            if any(keyword in phrase_lower for keyword in keywords):
+                return category
+        
+        # Use spaCy's entity recognition for additional categorization
+        phrase_doc = nlp(phrase)
+        for ent in phrase_doc.ents:
+            if ent.label_ == "PERSON":
+                return "person"
+            elif ent.label_ in ["ORG", "COMPANY"]:
+                return "organization"
+            elif ent.label_ in ["GPE", "LOC"]:
+                return "location"
+            elif ent.label_ in ["PRODUCT", "WORK_OF_ART"]:
+                return "product"
+        
+        return "general"
 
     def get_named_entities(self) -> Dict[str, List[str]]:
         """
-        Enhanced named entity recognition with categorization.
+        Enhanced named entity recognition with categorization using spaCy.
         """
-        chunks = nltk.ne_chunk(nltk.pos_tag(self.tokens))
         entities = {
             'PERSON': [], 'ORGANIZATION': [], 'LOCATION': [], 
             'DATE': [], 'TIME': [], 'MONEY': [], 'PERCENT': []
         }
         
-        for chunk in chunks:
-            if hasattr(chunk, 'label'):
-                entity_text = ' '.join(c[0] for c in chunk.leaves())
-                entity_type = chunk.label()
-                if entity_type in entities:
-                    entities[entity_type].append(entity_text)
+        # Map spaCy entity labels to our categories
+        label_mapping = {
+            'PERSON': 'PERSON',
+            'ORG': 'ORGANIZATION',
+            'GPE': 'LOCATION',  # Geopolitical entity
+            'LOC': 'LOCATION',
+            'DATE': 'DATE',
+            'TIME': 'TIME',
+            'MONEY': 'MONEY',
+            'PERCENT': 'PERCENT',
+            'CARDINAL': 'PERCENT',  # Numbers can be percentages
+        }
+        
+        for ent in self.doc.ents:
+            entity_type = label_mapping.get(ent.label_)
+            if entity_type and entity_type in entities:
+                entities[entity_type].append(ent.text)
         
         # Remove duplicates and keep only non-empty categories
         return {k: list(set(v)) for k, v in entities.items() if v}
@@ -296,7 +564,9 @@ class TextAnalyzer:
             'casual': set(['like', 'think', 'feel', 'maybe', 'probably'])
         }
         
-        words = set(word.lower() for word in self.tokens if word.lower() not in self.stop_words)
+        # Use spaCy lemmatized tokens
+        words = set(token.lemma_.lower() for token in self.doc 
+                   if not token.is_stop and not token.is_punct and not token.is_space)
         
         category_scores = {}
         for category, keywords in categories.items():
@@ -313,27 +583,26 @@ class TextAnalyzer:
 
     def get_summary(self, num_sentences: int = 3) -> str:
         """
-        Generate a summary using sentence scoring with WordNet lemmatization.
+        Generate a summary using sentence scoring with spaCy lemmatization.
         """
-        # Lemmatize all words and remove stopwords
+        # Get lemmatized words and remove stopwords using spaCy
         lemmatized_words = [
-            self.lemmatizer.lemmatize(word.lower(), self._get_wordnet_pos(word))
-            for word in self.tokens
-            if word.lower() not in self.stop_words
+            token.lemma_.lower()
+            for token in self.doc
+            if not token.is_stop and not token.is_punct and not token.is_space
         ]
         
         # Calculate word frequencies
-        word_freq = FreqDist(lemmatized_words)
+        word_freq = Counter(lemmatized_words)
         
         # Score sentences based on word frequencies and position
         sentence_scores = {}
-        for i, sentence in enumerate(self.sentences):
-            # Normalize and lemmatize words in the sentence
-            words = word_tokenize(sentence.lower())
+        for i, sent in enumerate(self.doc.sents):
+            # Get lemmatized words in the sentence
             sentence_words = [
-                self.lemmatizer.lemmatize(word, self._get_wordnet_pos(word))
-                for word in words
-                if word not in self.stop_words
+                token.lemma_.lower()
+                for token in sent
+                if not token.is_stop and not token.is_punct and not token.is_space
             ]
             
             # Calculate sentence score
@@ -347,7 +616,7 @@ class TextAnalyzer:
                 length_score = 1.0 if 5 <= word_count <= 25 else 0.5
                 
                 # Combine scores
-                sentence_scores[sentence] = (freq_score * 0.6 + pos_score * 0.3 + length_score * 0.1)
+                sentence_scores[sent.text.strip()] = (freq_score * 0.6 + pos_score * 0.3 + length_score * 0.1)
         
         # Get top sentences
         summary_sentences = sorted(

@@ -4,136 +4,49 @@ services:
     env: python
     buildCommand: |
       pip install -r requirements.txt
-      # Create both possible NLTK data directories to handle any path issues
-      mkdir -p /opt/render/nltk_data
-      mkdir -p /opt/render/project/src/nltk_data
-      chmod -R 777 /opt/render/nltk_data
-      chmod -R 777 /opt/render/project/src/nltk_data
-      # Create symlink to ensure both paths work
-      ln -sf /opt/render/nltk_data/* /opt/render/project/src/nltk_data/ || true
-      # Set NLTK_DATA environment variable
-      export NLTK_DATA="/opt/render/nltk_data"
-      # Download TextBlob corpora first
+      # Download spaCy English model
+      python -m spacy download en_core_web_sm
+      # Verify spaCy installation
+      python -c "
+      import spacy
+      try:
+          nlp = spacy.load('en_core_web_sm')
+          print('spaCy model loaded successfully')
+          print(f'Model info: {nlp.meta[\"name\"]} v{nlp.meta[\"version\"]}')
+          # Test basic functionality
+          doc = nlp('This is a test sentence.')
+          print(f'Tokens: {[token.text for token in doc]}')
+          print(f'Entities: {[ent.text for ent in doc.ents]}')
+          print('spaCy verification complete')
+      except Exception as e:
+          print(f'spaCy verification failed: {e}')
+          exit(1)
+      "
+      # Download TextBlob corpora
       python -m textblob.download_corpora
-      # Download and verify NLTK data
-      python -c '
-      import nltk
-      import os
-      import shutil
-      from pathlib import Path
-      
-      # Set up NLTK paths
-      nltk_paths = ["/opt/render/nltk_data", "/opt/render/project/src/nltk_data"]
-      for path in nltk_paths:
-          nltk.data.path.append(path)
-          os.makedirs(path, exist_ok=True)
-          os.chmod(path, 0o777)
-      
-      def verify_download(package, download_dir):
-          """Verify package download and contents."""
-          try:
-              if package == "brown":
-                  brown_dir = Path(download_dir) / "corpora" / "brown"
-                  cats_file = brown_dir / "cats.txt"
-                  if not cats_file.exists():
-                      return False
-              return True
-          except Exception:
-              return False
-      
-      def download_package(package):
-          """Download package with verification and retry."""
-          for attempt in range(3):  # Try up to 3 times
-              try:
-                  print(f"Downloading {package} (attempt {attempt + 1})...")
-                  nltk.download(package, download_dir="/opt/render/nltk_data", quiet=False)
-                  
-                  # Verify download
-                  if verify_download(package, "/opt/render/nltk_data"):
-                      print(f"Successfully downloaded and verified {package}")
-                      return True
-                  
-                  # If verification failed, clean up and retry
-                  print(f"Download verification failed for {package}, retrying...")
-                  package_dir = Path("/opt/render/nltk_data")
-                  for subdir in ["corpora", "tokenizers", "taggers", "chunkers"]:
-                      target_dir = package_dir / subdir / package
-                      if target_dir.exists():
-                          shutil.rmtree(target_dir)
-              
-              except Exception as e:
-                  print(f"Error downloading {package} (attempt {attempt + 1}): {str(e)}")
-          
-          print(f"Failed to download {package} after 3 attempts")
-          return False
-      
-      # Download core packages first
-      core_packages = ["punkt", "averaged_perceptron_tagger", "maxent_ne_chunker", "words", "stopwords", "wordnet"]
-      for package in core_packages:
-          download_package(package)
-      
-      # Download brown with extra verification
-      download_package("brown")
-      
-      # Verify final state
-      print("\nFinal NLTK Data Directory Structure:")
-      for nltk_path in nltk_paths:
-          print(f"\nChecking {nltk_path}:")
-          if os.path.exists(nltk_path):
-              for root, dirs, files in os.walk(nltk_path):
-                  level = root.replace(nltk_path, "").count(os.sep)
-                  indent = "  " * level
-                  print(f"{indent}{os.path.basename(root)}/")
-                  for f in files:
-                      print(f"{indent}  {f}")
-          else:
-              print(f"Directory {nltk_path} does not exist")
-      '
+      # Verify TextBlob
+      python -c "
+      from textblob import TextBlob
+      try:
+          blob = TextBlob('This is a test sentence.')
+          print(f'TextBlob sentiment: {blob.sentiment}')
+          print(f'TextBlob noun phrases: {list(blob.noun_phrases)}')
+          print('TextBlob verification complete')
+      except Exception as e:
+          print(f'TextBlob verification failed: {e}')
+          exit(1)
+      "
     startCommand: |
-      # Set NLTK_DATA environment variable
-      export NLTK_DATA="/opt/render/nltk_data"
-      # Add both paths to NLTK search path
-      python -c '
-      import nltk
-      import os
-      import sys
-      from pathlib import Path
-      
-      # Add both possible NLTK data paths
-      nltk_paths = ["/opt/render/nltk_data", "/opt/render/project/src/nltk_data"]
-      for path in nltk_paths:
-          if path not in nltk.data.path:
-              nltk.data.path.append(path)
-      
-      required_files = {
-          "brown": ["corpora/brown/cats.txt", "corpora/brown/ca01", "corpora/brown/ca02"],
-          "punkt": ["tokenizers/punkt/english.pickle"],
-          "stopwords": ["corpora/stopwords/english"],
-          "words": ["corpora/words/en"],
-          "wordnet": ["corpora/wordnet/data.noun", "corpora/wordnet/index.noun"]
-      }
-      
-      def check_files(base_path, files):
-          missing = []
-          for file in files:
-              full_path = Path(base_path) / file
-              if not full_path.exists():
-                  missing.append(file)
-          return missing
-      
-      # Check both paths for required files
-      for nltk_path in nltk_paths:
-          print(f"\nChecking NLTK data in {nltk_path}:")
-          for package, files in required_files.items():
-              missing = check_files(nltk_path, files)
-              if missing:
-                  print(f"  {package}: Missing files: {missing}")
-              else:
-                  print(f"  {package}: All files present")
-      
-      print("\nNLTK search paths:", nltk.data.path)
-      '
-      gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50
+      # Run database migrations if needed
+      python -c "
+      from src.database import engine
+      from src.models import Base
+      print('Creating database tables...')
+      Base.metadata.create_all(bind=engine)
+      print('Database setup complete')
+      "
+      # Start the application
+      gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 --preload
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.7
@@ -151,24 +64,23 @@ services:
         value: "production"
       - key: PYTHONPATH
         value: "."
-      - key: NLTK_DATA
-        value: "/opt/render/nltk_data"
       - key: MAX_CONTENT_LENGTH
         value: "1000000"
       - key: REQUEST_TIMEOUT
         value: "30"
       - key: RATE_LIMIT_PER_MINUTE
         value: "60"
-    disk:
-      name: nltk-data
-      mountPath: /opt/render/nltk_data
-      sizeGB: 1
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: WORKERS
+        value: "4"
     healthCheckPath: /health
     autoDeploy: true
     numInstances:
       min: 1
       max: 3
-      size: basic
     scaling:
       minInstances: 1
       maxInstances: 3

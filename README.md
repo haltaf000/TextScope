@@ -41,7 +41,7 @@ https://textscope.onrender.com/
 
 #### 2. Named Entity Recognition (NER)
 - Core Algorithms:
-  - Maximum Entropy Classifier (NLTK's ne_chunk)
+  - Named Entity Recognition (spaCy's NER)
   - Conditional Random Fields for sequence labeling
   - Rule-based post-processing
 - Implementation Details:
@@ -144,6 +144,7 @@ cd textscope
 
 2. Create a virtual environment and activate it:
 ```bash
+.\venv311\Scripts\Activate.ps1 
 python -m venv venv
 .\venv\Scripts\Activate  
 ```
@@ -183,7 +184,7 @@ textscope/
 │   ├── models.py         # SQLAlchemy models
 │   ├── schemas.py        # Pydantic schemas
 │   ├── security.py       # Authentication
-│   └── nlp.py           # Text analysis with NLTK
+│   └── nlp.py           # Text analysis with spaCy
 ├── static/
 │   ├── styles.css
 │   └── app.js

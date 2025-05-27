@@ -16,6 +16,7 @@ virtualenv/
 .env.production
 .env.backup
 .env.*.local
+production.env
 
 # Python
 __pycache__/
@@ -46,3 +47,315 @@ wheels/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.backup
+.env.*.local
+.venv
+env/
+venv/
+venv311/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+textscope.db
+database.db
+
+# Log files
+*.log
+logs/
+log/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# FastAPI specific
+.pytest_cache/
+.coverage
+htmlcov/
+
+# spaCy models (if downloaded locally)
+# Uncomment if you want to ignore downloaded spaCy models
+# en_core_web_sm/
+# en_core_web_md/
+# en_core_web_lg/
+
+# Machine Learning / AI models
+*.pkl
+*.pickle
+*.joblib
+*.model
+models/
+checkpoints/
+
+# Data files (uncomment if you have data directories)
+# data/
+# datasets/
+# *.csv
+# *.json (be careful with this one)
+# *.xlsx
+# *.xls
+
+# Deployment files
+.vercel
+.netlify
+.railway
+.render
+
+# Docker
+Dockerfile.prod
+docker-compose.prod.yml
+.dockerignore
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Node.js (if you have any frontend build tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+
+# Test files
+test_*.py
+*_test.py
+tests/
+.pytest_cache/
+
+# Configuration files with sensitive data
+config.ini
+config.cfg
+settings.ini
+secrets.json
+
+# Alembic (database migration)
+alembic.ini.bak
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Local development files
+local_*
+dev_*
+development_*
+
+# Performance profiling
+*.prof
+
+# Memory profiling
+*.mprof
+
+# Coverage reports
+.coverage
+coverage.xml
+*.cover
+
+# Documentation builds
+docs/_build/
+site/
+
+# Translation files
+*.mo
+
+# Local configuration overrides
+local_settings.py
+local_config.py
+
+# Runtime files
+*.pid
+*.sock
+
+# Cache directories
+.cache/
+__pycache__/
+
+# Temporary directories created by tools
+.tmp/
+.temp/

@@ -6,11 +6,32 @@ import os
 
 load_dotenv()
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./textscope.db")
+# Get database URL from environment
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./textscope.db")
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# Handle PostgreSQL URL format for production
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Configure engine based on database type
+if DATABASE_URL.startswith("sqlite"):
+    # SQLite configuration for development
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args={"check_same_thread": False},
+        echo=False  # Set to True for SQL debugging
+    )
+else:
+    # PostgreSQL configuration for production
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        echo=False  # Set to True for SQL debugging
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -22,3 +43,17 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Health check function for database
+def check_database_health():
+    """Check if database connection is healthy."""
+    try:
+        from sqlalchemy import text
+        db = SessionLocal()
+        # Simple query to test connection
+        db.execute(text("SELECT 1"))
+        db.close()
+        return True
+    except Exception as e:
+        print(f"Database health check failed: {e}")
+        return False

@@ -2,113 +2,161 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
 from typing import List
 import json
 import os
 import sys
-import nltk
+import logging
+import spacy
 from textblob import TextBlob
 
 from . import models, schemas, security
-from .database import get_db, engine
+from .database import get_db, engine, check_database_health
 from .text_preprocessor import analyze_text
 
-# Determine environment and set NLTK data path
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
-if ENVIRONMENT == 'production':
-    NLTK_DATA_PATH = '/opt/render/project/src/nltk_data'
-else:
-    # For local development, use the default NLTK data path
-    NLTK_DATA_PATH = os.path.join(os.path.expanduser('~'), 'nltk_data')
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, os.getenv('LOG_LEVEL', 'INFO')),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Initialize NLTK
-nltk.data.path.append(NLTK_DATA_PATH)
+# Determine environment
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+IS_PRODUCTION = ENVIRONMENT == 'production'
+
+# Initialize Sentry for production error tracking
+if IS_PRODUCTION:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+        
+        sentry_sdk.init(
+            dsn=os.getenv('SENTRY_DSN'),  # Set this in Render environment variables if you want error tracking
+            integrations=[
+                FastApiIntegration(auto_enabling_integrations=False),
+                SqlalchemyIntegration(),
+            ],
+            traces_sample_rate=0.1,
+            environment=ENVIRONMENT,
+        )
+        logger.info("Sentry initialized for error tracking")
+    except ImportError:
+        logger.warning("Sentry not available, skipping error tracking setup")
 
 # Create database tables
-models.Base.metadata.create_all(bind=engine)
+try:
+    models.Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
+except Exception as e:
+    logger.error(f"Failed to create database tables: {e}")
+    if IS_PRODUCTION:
+        raise
 
-app = FastAPI(title="TextScope", description="Professional Text Analysis Platform")
+# Initialize FastAPI app
+app = FastAPI(
+    title="TextScope",
+    description="Professional Text Analysis Platform",
+    version="1.0.0",
+    docs_url="/docs" if not IS_PRODUCTION else None,  # Disable docs in production
+    redoc_url="/redoc" if not IS_PRODUCTION else None,
+)
+
+# CORS configuration
+allowed_origins = os.getenv('CORS_ORIGINS', '*').split(',')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
+
+# Security middleware for production
+if IS_PRODUCTION:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["*.onrender.com", "textscope.onrender.com"]  # Update with your actual domain
+    )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    
+    if IS_PRODUCTION:
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    return response
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize NLTK data and verify availability."""
+    """Initialize spaCy model and verify availability."""
+    logger.info(f"Starting TextScope application in {ENVIRONMENT} mode")
+    
     try:
-        # Ensure NLTK data directory exists
-        os.makedirs(NLTK_DATA_PATH, exist_ok=True)
+        # Test database connection
+        if not check_database_health():
+            logger.error("Database health check failed")
+            if IS_PRODUCTION:
+                raise RuntimeError("Database connection failed")
+        else:
+            logger.info("Database connection verified")
         
-        # Download required NLTK data if not present
-        required_packages = [
-            'punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker',
-            'words', 'stopwords', 'brown', 'wordnet'
-        ]
+        # Test spaCy model loading
+        try:
+            nlp = spacy.load("en_core_web_sm")
+            logger.info("spaCy model 'en_core_web_sm' loaded successfully")
+        except OSError:
+            error_msg = (
+                "spaCy English model 'en_core_web_sm' not found. "
+                "Please install it using: python -m spacy download en_core_web_sm"
+            )
+            logger.error(f"spaCy model error: {error_msg}")
+            if IS_PRODUCTION:
+                raise RuntimeError(error_msg)
+            else:
+                logger.warning("Continuing anyway as we're in development mode...")
+                return
         
-        # First verify what's missing
-        missing_packages = []
-        for package in required_packages:
-            try:
-                if package == 'wordnet':
-                    # Special verification for wordnet
-                    nltk.data.find('corpora/wordnet.zip')
-                    # Also verify essential wordnet files
-                    for file in ['data.noun', 'index.noun']:
-                        nltk.data.find(f'corpora/wordnet/{file}')
-                else:
-                    nltk.data.find(f'tokenizers/{package}' if package == 'punkt' 
-                                else f'corpora/{package}' if package in ['brown', 'words', 'stopwords']
-                                else f'taggers/{package}' if package == 'averaged_perceptron_tagger'
-                                else f'chunkers/{package}' if package == 'maxent_ne_chunker'
-                                else package)
-            except LookupError:
-                missing_packages.append(package)
+        # Test spaCy and TextBlob functionality
+        test_text = "This is a test sentence for spaCy and TextBlob."
         
-        if missing_packages:
-            print(f"Downloading missing NLTK packages: {missing_packages}")
-            for package in missing_packages:
-                try:
-                    nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=False)
-                    # Verify the download was successful
-                    if package == 'wordnet':
-                        nltk.data.find('corpora/wordnet.zip')
-                        for file in ['data.noun', 'index.noun']:
-                            nltk.data.find(f'corpora/wordnet/{file}')
-                    print(f"Successfully downloaded {package}")
-                except Exception as e:
-                    print(f"Failed to download {package}: {str(e)}")
-                    raise RuntimeError(f"Failed to download required NLTK package {package}")
-        
-        # Test NLTK and TextBlob functionality
-        test_text = "This is a test sentence for NLTK and TextBlob."
         # Test TextBlob
         blob = TextBlob(test_text)
         _ = blob.sentiment
         _ = blob.noun_phrases
-        # Test NLTK specific functionality including WordNet
-        tokens = nltk.word_tokenize(test_text)
-        tags = nltk.pos_tag(tokens)
-        entities = nltk.chunk.ne_chunk(tags)
-        # Test WordNet specifically
-        from nltk.corpus import wordnet
-        synsets = wordnet.synsets('test')
-        if not synsets:
-            raise RuntimeError("WordNet is not working properly")
         
-        print("NLTK and TextBlob initialization successful")
-        print("NLTK data path:", nltk.data.path)
+        # Test spaCy functionality
+        doc = nlp(test_text)
+        _ = [token.text for token in doc]
+        _ = [sent.text for sent in doc.sents]
+        _ = [ent.text for ent in doc.ents]
+        _ = [chunk.text for chunk in doc.noun_chunks]
         
-        # Only try to list directory if it exists
-        if os.path.exists(NLTK_DATA_PATH):
-            print("Available NLTK data:", os.listdir(NLTK_DATA_PATH))
-        else:
-            print(f"NLTK data directory not found at {NLTK_DATA_PATH}")
+        logger.info("spaCy and TextBlob initialization successful")
+        logger.info(f"spaCy model info: {nlp.meta['name']} v{nlp.meta['version']}")
             
     except Exception as e:
-        print(f"NLTK initialization error: {str(e)}")
-        if ENVIRONMENT == 'development':
-            print("Continuing anyway as we're in development mode...")
+        logger.error(f"Startup initialization error: {str(e)}")
+        if IS_PRODUCTION:
+            raise RuntimeError(f"Failed to initialize application: {str(e)}")
         else:
-            raise RuntimeError(f"Failed to initialize NLTK: {str(e)}")
+            logger.warning("Continuing anyway as we're in development mode...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on application shutdown."""
+    logger.info("Shutting down TextScope application")
 
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -120,40 +168,70 @@ async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    user = db.query(models.User).filter(models.User.username == form_data.username).first()
-    if not user or not security.verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        user = db.query(models.User).filter(models.User.username == form_data.username).first()
+        if not user or not security.verify_password(form_data.password, user.hashed_password):
+            logger.warning(f"Failed login attempt for username: {form_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = security.create_access_token(
+            data={"sub": user.username}, expires_delta=access_token_expires
         )
-    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+        
+        logger.info(f"Successful login for user: {user.username}")
+        return {"access_token": access_token, "token_type": "bearer"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during login"
+        )
 
 # User endpoints
 @app.post("/users/", response_model=schemas.User)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    try:
+        # Check for existing email
+        db_user = db.query(models.User).filter(models.User.email == user.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Check for existing username
+        db_user = db.query(models.User).filter(models.User.username == user.username).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Username already taken")
+        
+        # Create new user
+        hashed_password = security.get_password_hash(user.password)
+        db_user = models.User(
+            email=user.email,
+            username=user.username,
+            hashed_password=hashed_password
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        logger.info(f"New user created: {user.username}")
+        return db_user
     
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already taken")
-    
-    hashed_password = security.get_password_hash(user.password)
-    db_user = models.User(
-        email=user.email,
-        username=user.username,
-        hashed_password=hashed_password
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"User creation error: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during user creation"
+        )
 
 @app.get("/users/me/", response_model=schemas.User)
 async def read_users_me(
@@ -176,121 +254,40 @@ async def analyze_text_endpoint(
                 detail="Text cannot be empty"
             )
         
-        if len(text_input.text) > 10000:  # Limit text length
+        max_length = int(os.getenv('MAX_CONTENT_LENGTH', 10000))
+        if len(text_input.text) > max_length:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Text exceeds maximum length of 10,000 characters"
+                detail=f"Text exceeds maximum length of {max_length} characters"
             )
 
-        # Verify NLTK data availability with special handling for WordNet
-        required_data = [
-            ('tokenizers/punkt', 'punkt'),
-            ('taggers/averaged_perceptron_tagger', 'averaged_perceptron_tagger'),
-            ('chunkers/maxent_ne_chunker', 'maxent_ne_chunker'),
-            ('corpora/words', 'words'),
-            ('corpora/stopwords', 'stopwords'),
-            ('corpora/brown', 'brown'),
-            ('corpora/wordnet', 'wordnet')
-        ]
-        
-        missing_data = []
-        for data_path, package_name in required_data:
-            try:
-                if package_name == 'wordnet':
-                    # Special verification for wordnet
-                    nltk.data.find('corpora/wordnet.zip')
-                    # Also verify essential wordnet files
-                    for file in ['data.noun', 'index.noun']:
-                        nltk.data.find(f'corpora/wordnet/{file}')
-                else:
-                    nltk.data.find(data_path)
-            except LookupError:
-                missing_data.append(package_name)
-        
-        if missing_data:
-            # Try to download missing data
-            for package in missing_data:
-                try:
-                    nltk.download(package, download_dir=NLTK_DATA_PATH, quiet=True)
-                    # Verify WordNet specifically after download
-                    if package == 'wordnet':
-                        nltk.data.find('corpora/wordnet.zip')
-                        for file in ['data.noun', 'index.noun']:
-                            nltk.data.find(f'corpora/wordnet/{file}')
-                except Exception as e:
-                    print(f"Failed to download {package}: {str(e)}")
-            
-            # Verify again after download attempt
-            still_missing = []
-            for data_path, package_name in required_data:
-                try:
-                    if package_name == 'wordnet':
-                        nltk.data.find('corpora/wordnet.zip')
-                        for file in ['data.noun', 'index.noun']:
-                            nltk.data.find(f'corpora/wordnet/{file}')
-                    else:
-                        nltk.data.find(data_path)
-                except LookupError:
-                    still_missing.append(package_name)
-            
-            if still_missing:
-                # Try one final time with user directory
-                user_nltk_path = os.path.join(os.path.expanduser('~'), 'nltk_data')
-                os.makedirs(user_nltk_path, exist_ok=True)
-                for package in still_missing:
-                    try:
-                        nltk.download(package, download_dir=user_nltk_path, quiet=True)
-                    except Exception:
-                        pass
-                
-                # Final verification
-                final_missing = []
-                for data_path, package_name in required_data:
-                    try:
-                        if package_name == 'wordnet':
-                            nltk.data.find('corpora/wordnet.zip')
-                            for file in ['data.noun', 'index.noun']:
-                                nltk.data.find(f'corpora/wordnet/{file}')
-                        else:
-                            nltk.data.find(data_path)
-                    except LookupError:
-                        final_missing.append(package_name)
-                
-                if final_missing:
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail={
-                            "error": "NLTK data unavailable",
-                            "message": "Required NLTK data is missing",
-                            "missing_packages": final_missing,
-                            "nltk_data_path": NLTK_DATA_PATH
-                        }
-                    )
-
-        # Test WordNet functionality before proceeding
+        # Verify spaCy model availability
         try:
-            from nltk.corpus import wordnet
-            test_synsets = wordnet.synsets('test')
-            if not test_synsets:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail={
-                        "error": "WordNet verification failed",
-                        "message": "WordNet is not functioning properly",
-                        "nltk_data_path": NLTK_DATA_PATH
-                    }
-                )
-        except Exception as e:
+            nlp = spacy.load("en_core_web_sm")
+            # Test basic functionality
+            test_doc = nlp("Test sentence")
+            _ = [token.text for token in test_doc]
+        except OSError:
+            logger.error("spaCy model not available")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
-                    "error": "WordNet error",
-                    "message": str(e),
-                    "nltk_data_path": NLTK_DATA_PATH
+                    "error": "spaCy model unavailable",
+                    "message": "spaCy English model 'en_core_web_sm' not found. Please install it using: python -m spacy download en_core_web_sm"
+                }
+            )
+        except Exception as e:
+            logger.error(f"spaCy error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "spaCy error",
+                    "message": str(e)
                 }
             )
 
         # Perform analysis
+        logger.info(f"Starting text analysis for user: {current_user.username}")
         analysis_result = analyze_text(text_input.text)
         
         # Create database entry
@@ -313,9 +310,10 @@ async def analyze_text_endpoint(
             db.add(db_analysis)
             db.commit()
             db.refresh(db_analysis)
+            logger.info(f"Analysis saved to database with ID: {db_analysis.id}")
         except Exception as e:
             db.rollback()
-            print(f"Database error: {str(e)}")
+            logger.error(f"Database error: {str(e)}")
             # Continue without database storage
             return schemas.TextAnalysis(
                 id=-1,  # Temporary ID for failed storage
@@ -327,18 +325,14 @@ async def analyze_text_endpoint(
             )
         
         return db_analysis
-        
-    except HTTPException as he:
-        raise he
+    
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Analysis error: {str(e)}")
+        logger.error(f"Analysis error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error": "Analysis failed",
-                "message": str(e),
-                "type": "analysis_error"
-            }
+            detail="Internal server error during text analysis"
         )
 
 @app.delete("/analyses/{analysis_id}")
@@ -347,20 +341,66 @@ async def delete_analysis(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_active_user)
 ):
-    analysis = db.query(models.TextAnalysis).filter(
-        models.TextAnalysis.id == analysis_id,
-        models.TextAnalysis.user_id == current_user.id
-    ).first()
+    try:
+        analysis = db.query(models.TextAnalysis).filter(
+            models.TextAnalysis.id == analysis_id,
+            models.TextAnalysis.user_id == current_user.id
+        ).first()
+        
+        if not analysis:
+            raise HTTPException(
+                status_code=404,
+                detail="Analysis not found or you don't have permission to delete it"
+            )
+        
+        db.delete(analysis)
+        db.commit()
+        
+        logger.info(f"Analysis {analysis_id} deleted by user: {current_user.username}")
+        return {"message": "Analysis deleted successfully"}
     
-    if not analysis:
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting analysis {analysis_id}: {str(e)}")
+        db.rollback()
         raise HTTPException(
-            status_code=404,
-            detail="Analysis not found or you don't have permission to delete it"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while deleting analysis"
         )
+
+@app.get("/analyses/{analysis_id}", response_model=schemas.TextAnalysis)
+async def get_analysis(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_active_user)
+):
+    """
+    Get a specific analysis by ID.
+    """
+    try:
+        analysis = db.query(models.TextAnalysis).filter(
+            models.TextAnalysis.id == analysis_id,
+            models.TextAnalysis.user_id == current_user.id
+        ).first()
+        
+        if not analysis:
+            raise HTTPException(
+                status_code=404,
+                detail="Analysis not found or you don't have permission to access it"
+            )
+        
+        logger.info(f"Retrieved analysis {analysis_id} for user: {current_user.username}")
+        return analysis
     
-    db.delete(analysis)
-    db.commit()
-    return {"message": "Analysis deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching analysis {analysis_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching analysis"
+        )
 
 @app.get("/analyses/", response_model=List[schemas.TextAnalysis])
 async def get_analyses(
@@ -404,12 +444,16 @@ async def get_analyses(
         # Apply pagination
         analyses = query.offset(skip).limit(limit).all()
         
+        logger.info(f"Retrieved {len(analyses)} analyses for user: {current_user.username}")
         return analyses
-        
+    
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error fetching analyses: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch analyses: {str(e)}"
+            detail="Internal server error while fetching analyses"
         )
 
 # Frontend routes
@@ -419,41 +463,58 @@ async def read_root(request: Request):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint that verifies NLTK functionality."""
+    """
+    Enhanced health check endpoint for production monitoring.
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment": ENVIRONMENT,
+        "services": {}
+    }
+    
+    # Test database connection
     try:
-        # Test NLTK functionality
-        test_text = "This is a test sentence."
-        blob = TextBlob(test_text)
-        _ = blob.sentiment
-        _ = blob.noun_phrases
-        
-        # Check NLTK data availability
-        available_data = []
-        if os.path.exists(NLTK_DATA_PATH):
-            available_data = os.listdir(NLTK_DATA_PATH)
-        
-        return {
-            "status": "healthy",
-            "environment": ENVIRONMENT,
-            "nltk_data_path": NLTK_DATA_PATH,
-            "available_nltk_data": available_data,
-            "test_analysis": "success",
-            "nltk_search_paths": nltk.data.path
-        }
+        db_healthy = check_database_health()
+        health_status["services"]["database"] = "healthy" if db_healthy else "unhealthy"
     except Exception as e:
-        error_msg = str(e)
-        if ENVIRONMENT == 'development':
-            # In development, return more detailed error information
-            return {
-                "status": "warning",
-                "environment": "development",
-                "message": "Service running in development mode with warnings",
-                "error": error_msg,
-                "nltk_data_path": NLTK_DATA_PATH,
-                "nltk_search_paths": nltk.data.path
-            }
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Service unhealthy: {error_msg}"
-            )
+        health_status["services"]["database"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    # Test spaCy model
+    try:
+        nlp = spacy.load("en_core_web_sm")
+        test_doc = nlp("Health check test")
+        _ = [token.text for token in test_doc]
+        health_status["services"]["spacy"] = "healthy"
+        health_status["spacy_model"] = nlp.meta['name']
+        health_status["spacy_version"] = nlp.meta['version']
+    except Exception as e:
+        health_status["services"]["spacy"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    # Test TextBlob
+    try:
+        blob = TextBlob("Health check test")
+        _ = blob.sentiment
+        health_status["services"]["textblob"] = "healthy"
+    except Exception as e:
+        health_status["services"]["textblob"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    # Set overall status
+    if any("error" in str(service) for service in health_status["services"].values()):
+        health_status["status"] = "degraded"
+    
+    # Return appropriate HTTP status code based on health
+    if health_status["status"] == "healthy":
+        return health_status
+    elif health_status["status"] == "degraded" and not IS_PRODUCTION:
+        # In development, return degraded status but still 200
+        return health_status
+    else:
+        # In production, return 503 for degraded services
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=health_status
+        )
