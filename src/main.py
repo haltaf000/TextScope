@@ -297,39 +297,24 @@ async def analyze_text_endpoint(
             user_id=current_user.id,
             **{k: v for k, v in analysis_result.items() if k in [
                 'sentiment', 'polarity', 'subjectivity', 'sentiment_confidence',
-                'tone', 'professional_metrics', 'flesch_score', 'avg_sentence_length',
-                'word_count', 'sentence_count', 'syllable_count', 'difficulty_level',
-                'professional_scores', 'writing_improvements', 'key_phrases',
-                'named_entities', 'language_code', 'language_confidence',
-                'content_category', 'category_confidence', 'category_distribution',
-                'summary'
+                'word_count', 'sentence_count', 'paragraph_count', 'avg_sentence_length',
+                'readability_score', 'reading_level', 'pos_tags', 'named_entities',
+                'noun_phrases', 'keywords', 'language_detected', 'confidence_score'
             ]}
         )
         
-        try:
-            db.add(db_analysis)
-            db.commit()
-            db.refresh(db_analysis)
-            logger.info(f"Analysis saved to database with ID: {db_analysis.id}")
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Database error: {str(e)}")
-            # Continue without database storage
-            return schemas.TextAnalysis(
-                id=-1,  # Temporary ID for failed storage
-                title=text_input.title,
-                text=text_input.text,
-                created_at=datetime.utcnow(),
-                user_id=current_user.id,
-                **analysis_result
-            )
+        db.add(db_analysis)
+        db.commit()
+        db.refresh(db_analysis)
         
+        logger.info(f"Text analysis completed for user: {current_user.username}, analysis ID: {db_analysis.id}")
         return db_analysis
-    
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Analysis error: {str(e)}")
+        logger.error(f"Text analysis error: {str(e)}")
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during text analysis"
@@ -362,11 +347,11 @@ async def delete_analysis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting analysis {analysis_id}: {str(e)}")
+        logger.error(f"Delete analysis error: {str(e)}")
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while deleting analysis"
+            detail="Internal server error during analysis deletion"
         )
 
 @app.get("/analyses/{analysis_id}", response_model=schemas.TextAnalysis)
@@ -375,9 +360,6 @@ async def get_analysis(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_active_user)
 ):
-    """
-    Get a specific analysis by ID.
-    """
     try:
         analysis = db.query(models.TextAnalysis).filter(
             models.TextAnalysis.id == analysis_id,
@@ -390,16 +372,15 @@ async def get_analysis(
                 detail="Analysis not found or you don't have permission to access it"
             )
         
-        logger.info(f"Retrieved analysis {analysis_id} for user: {current_user.username}")
         return analysis
-    
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching analysis {analysis_id}: {str(e)}")
+        logger.error(f"Get analysis error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while fetching analysis"
+            detail="Internal server error while retrieving analysis"
         )
 
 @app.get("/analyses/", response_model=List[schemas.TextAnalysis])
@@ -411,23 +392,15 @@ async def get_analyses(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_active_user)
 ):
-    """
-    Get user's analyses with enhanced sorting and filtering.
-    """
     try:
         # Validate sort parameters
-        valid_sort_fields = ["created_at", "title", "sentiment", "difficulty_level", "word_count"]
+        valid_sort_fields = ["created_at", "title", "sentiment", "word_count"]
         if sort_by not in valid_sort_fields:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid sort field. Must be one of: {', '.join(valid_sort_fields)}"
-            )
+            sort_by = "created_at"
         
-        if sort_order not in ["asc", "desc"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sort order must be 'asc' or 'desc'"
-            )
+        valid_sort_orders = ["asc", "desc"]
+        if sort_order not in valid_sort_orders:
+            sort_order = "desc"
         
         # Build query
         query = db.query(models.TextAnalysis).filter(
@@ -435,86 +408,90 @@ async def get_analyses(
         )
         
         # Apply sorting
-        sort_column = getattr(models.TextAnalysis, sort_by)
         if sort_order == "desc":
-            query = query.order_by(sort_column.desc())
+            query = query.order_by(getattr(models.TextAnalysis, sort_by).desc())
         else:
-            query = query.order_by(sort_column.asc())
+            query = query.order_by(getattr(models.TextAnalysis, sort_by).asc())
         
         # Apply pagination
         analyses = query.offset(skip).limit(limit).all()
         
         logger.info(f"Retrieved {len(analyses)} analyses for user: {current_user.username}")
         return analyses
-    
-    except HTTPException:
-        raise
+        
     except Exception as e:
-        logger.error(f"Error fetching analyses: {str(e)}")
+        logger.error(f"Get analyses error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while fetching analyses"
+            detail="Internal server error while retrieving analyses"
         )
 
-# Frontend routes
 @app.get("/")
 async def read_root(request: Request):
+    """Serve the main application page."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/health")
 async def health_check():
-    """
-    Enhanced health check endpoint for production monitoring.
-    """
-    health_status = {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "environment": ENVIRONMENT,
-        "services": {}
-    }
-    
-    # Test database connection
+    """Health check endpoint for monitoring."""
     try:
+        # Check database connection
         db_healthy = check_database_health()
-        health_status["services"]["database"] = "healthy" if db_healthy else "unhealthy"
+        
+        # Check spaCy model availability
+        spacy_healthy = False
+        try:
+            nlp = spacy.load("en_core_web_sm")
+            test_doc = nlp("Test")
+            spacy_healthy = True
+        except:
+            pass
+        
+        status_code = 200 if db_healthy and spacy_healthy else 503
+        
+        return {
+            "status": "healthy" if status_code == 200 else "unhealthy",
+            "database": "connected" if db_healthy else "disconnected",
+            "spacy": "available" if spacy_healthy else "unavailable",
+            "environment": ENVIRONMENT,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
     except Exception as e:
-        health_status["services"]["database"] = f"error: {str(e)}"
-        health_status["status"] = "degraded"
-    
-    # Test spaCy model
-    try:
-        nlp = spacy.load("en_core_web_sm")
-        test_doc = nlp("Health check test")
-        _ = [token.text for token in test_doc]
-        health_status["services"]["spacy"] = "healthy"
-        health_status["spacy_model"] = nlp.meta['name']
-        health_status["spacy_version"] = nlp.meta['version']
-    except Exception as e:
-        health_status["services"]["spacy"] = f"error: {str(e)}"
-        health_status["status"] = "degraded"
-    
-    # Test TextBlob
-    try:
-        blob = TextBlob("Health check test")
-        _ = blob.sentiment
-        health_status["services"]["textblob"] = "healthy"
-    except Exception as e:
-        health_status["services"]["textblob"] = f"error: {str(e)}"
-        health_status["status"] = "degraded"
-    
-    # Set overall status
-    if any("error" in str(service) for service in health_status["services"].values()):
-        health_status["status"] = "degraded"
-    
-    # Return appropriate HTTP status code based on health
-    if health_status["status"] == "healthy":
-        return health_status
-    elif health_status["status"] == "degraded" and not IS_PRODUCTION:
-        # In development, return degraded status but still 200
-        return health_status
-    else:
-        # In production, return 503 for degraded services
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=health_status
-        )
+        logger.error(f"Health check error: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "environment": ENVIRONMENT,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+# Error handlers
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: HTTPException):
+    """Custom 404 handler."""
+    return templates.TemplateResponse(
+        "404.html", 
+        {"request": request}, 
+        status_code=404
+    )
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc: HTTPException):
+    """Custom 500 handler."""
+    logger.error(f"Internal server error: {exc}")
+    return templates.TemplateResponse(
+        "500.html", 
+        {"request": request}, 
+        status_code=500
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        reload=not IS_PRODUCTION,
+        log_level=os.getenv('LOG_LEVEL', 'info').lower()
+    )

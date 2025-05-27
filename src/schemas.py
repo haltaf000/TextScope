@@ -96,6 +96,6 @@ class TextAnalysis(TextAnalysisBase):
 
     # Summary
     summary: str
-
     class Config:
         orm_mode = True
+
