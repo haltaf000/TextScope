@@ -4,9 +4,7 @@ services:
     env: python
     buildCommand: |
       pip install -r requirements.txt
-      # Download spaCy English model
-      python -m spacy download en_core_web_sm
-      # Verify spaCy installation
+      # Verify spaCy installation (model already installed via requirements.txt)
       python -c "
       import spacy
       try:
@@ -46,7 +44,7 @@ services:
       print('Database setup complete')
       "
       # Start the application
-      gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 --preload
+      gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 1 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.7
@@ -75,7 +73,7 @@ services:
       - key: LOG_LEVEL
         value: "INFO"
       - key: WORKERS
-        value: "4"
+        value: "1"
     healthCheckPath: /health
     autoDeploy: true
     numInstances:
