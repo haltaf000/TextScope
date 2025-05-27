@@ -65,10 +65,19 @@ class AnalysisManager {
             } else {
                 let errorMessage = 'Analysis failed. Please try again.';
                 try {
-                    const errorData = JSON.parse(responseText);
-                    errorMessage = errorData.detail || errorMessage;
+                    // Check if response is JSON
+                    if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+                        const errorData = JSON.parse(responseText);
+                        errorMessage = errorData.detail || errorMessage;
+                    } else {
+                        // Response is HTML or other format
+                        console.error('Received non-JSON response:', responseText.substring(0, 200) + '...');
+                        errorMessage = `Server error (${response.status}). Please try again or contact support.`;
+                    }
                 } catch (e) {
                     console.error('Error parsing error response:', e);
+                    console.error('Raw error response:', responseText.substring(0, 200) + '...');
+                    errorMessage = `Server error (${response.status}). Please try again or contact support.`;
                 }
                 console.error('Analysis failed:', errorMessage);
                 alert(errorMessage);
