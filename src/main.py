@@ -297,10 +297,12 @@ async def analyze_text_endpoint(
             text=text_input.text,
             user_id=current_user.id,
             **{k: v for k, v in analysis_result.items() if k in [
-                'sentiment', 'polarity', 'subjectivity', 'sentiment_confidence',
-                'word_count', 'sentence_count', 'paragraph_count', 'avg_sentence_length',
-                'readability_score', 'reading_level', 'pos_tags', 'named_entities',
-                'noun_phrases', 'keywords', 'language_detected', 'confidence_score'
+                'sentiment', 'polarity', 'subjectivity', 'sentiment_confidence', 'tone', 'professional_metrics',
+                'flesch_score', 'avg_sentence_length', 'word_count', 'sentence_count', 'syllable_count', 
+                'difficulty_level', 'professional_scores', 'writing_improvements',
+                'key_phrases', 'named_entities',
+                'language_code', 'language_confidence', 'content_category', 'category_confidence', 
+                'category_distribution', 'summary'
             ]}
         )
         
