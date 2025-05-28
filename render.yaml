@@ -2,49 +2,8 @@ services:
   - type: web
     name: textscope
     env: python
-    buildCommand: |
-      pip install -r requirements.txt
-      # Verify spaCy installation (model already installed via requirements.txt)
-      python -c "
-      import spacy
-      try:
-          nlp = spacy.load('en_core_web_sm')
-          print('spaCy model loaded successfully')
-          print(f'Model info: {nlp.meta[\"name\"]} v{nlp.meta[\"version\"]}')
-          # Test basic functionality
-          doc = nlp('This is a test sentence.')
-          print(f'Tokens: {[token.text for token in doc]}')
-          print(f'Entities: {[ent.text for ent in doc.ents]}')
-          print('spaCy verification complete')
-      except Exception as e:
-          print(f'spaCy verification failed: {e}')
-          exit(1)
-      "
-      # Download TextBlob corpora
-      python -m textblob.download_corpora
-      # Verify TextBlob
-      python -c "
-      from textblob import TextBlob
-      try:
-          blob = TextBlob('This is a test sentence.')
-          print(f'TextBlob sentiment: {blob.sentiment}')
-          print(f'TextBlob noun phrases: {list(blob.noun_phrases)}')
-          print('TextBlob verification complete')
-      except Exception as e:
-          print(f'TextBlob verification failed: {e}')
-          exit(1)
-      "
-    startCommand: |
-      # Run database migrations if needed
-      python -c "
-      from src.database import engine
-      from src.models import Base
-      print('Creating database tables...')
-      Base.metadata.create_all(bind=engine)
-      print('Database setup complete')
-      "
-      # Start the application
-      gunicorn src.main:app -k uvicorn.workers.UvicornWorker -w 1 -b 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50
+    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_sm
+    startCommand: gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --log-level info
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.7
@@ -65,25 +24,25 @@ services:
       - key: MAX_CONTENT_LENGTH
         value: "1000000"
       - key: REQUEST_TIMEOUT
-        value: "30"
-      - key: RATE_LIMIT_PER_MINUTE
         value: "60"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "30"
       - key: CORS_ORIGINS
         value: "*"
       - key: LOG_LEVEL
         value: "INFO"
       - key: WORKERS
-        value: "1"
+        value: "2"
     healthCheckPath: /health
     autoDeploy: true
     numInstances:
       min: 1
-      max: 3
+      max: 2
     scaling:
       minInstances: 1
-      maxInstances: 3
-      targetMemoryPercent: 80
-      targetCPUPercent: 80
+      maxInstances: 2
+      targetMemoryPercent: 70
+      targetCPUPercent: 70
 
 databases:
   - name: textscope-db

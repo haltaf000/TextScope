@@ -14,6 +14,7 @@ import sys
 import logging
 import spacy
 from textblob import TextBlob
+import sqlalchemy.exc
 
 from . import models, schemas, security
 from .database import get_db, engine, check_database_health
@@ -170,6 +171,15 @@ async def login_for_access_token(
     db: Session = Depends(get_db)
 ):
     try:
+        # Add connection verification
+        if not check_database_health():
+            logger.error("Database connection failed during login attempt")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Service temporarily unavailable. Please try again later.",
+                headers={"Retry-After": "30"},
+            )
+            
         user = db.query(models.User).filter(models.User.username == form_data.username).first()
         if not user or not security.verify_password(form_data.password, user.hashed_password):
             logger.warning(f"Failed login attempt for username: {form_data.username}")
@@ -189,6 +199,13 @@ async def login_for_access_token(
     
     except HTTPException:
         raise
+    except sqlalchemy.exc.OperationalError as e:
+        logger.error(f"Database operational error during login: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection error. Please try again later.",
+            headers={"Retry-After": "30"},
+        )
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(

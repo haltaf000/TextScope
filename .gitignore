@@ -166,6 +166,7 @@ venv311/
 ENV/
 env.bak/
 venv.bak/
+Plan/ 
 
 # Spyder project settings
 .spyderproject

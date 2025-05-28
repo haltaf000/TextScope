@@ -1,208 +1,167 @@
 # TextScope - Professional Text Analysis Platform
 
-TextScope is a modern web application that provides advanced text analysis capabilities using Natural Language Processing (NLP). It offers features like sentiment analysis, entity recognition, key phrase extraction, and more.
+TextScope is a sophisticated text analysis platform that provides professional-grade insights into text content. Built with Python, FastAPI, and modern NLP technologies, it offers sentiment analysis, readability metrics, and professional writing improvements.
 
-## Link
+## 🚀 Features
 
-https://textscope.onrender.com/
+- **Text Analysis**
+  - Sentiment Analysis
+  - Readability Metrics
+  - Professional Writing Suggestions
+  - Key Phrase Extraction
+  - Named Entity Recognition
 
-## Features
+- **User Management**
+  - Secure Authentication
+  - Personal Analysis History
+  - User-specific Data Storage
 
-- User authentication and authorization
-- Text analysis with multiple options:
-  - Sentiment analysis
-  - Named entity recognition
-  - Key phrase extraction
-  - Word and sentence statistics
-- File upload support
-- Analysis history
-- Export functionality
-- Modern, responsive UI
+- **Modern Tech Stack**
+  - FastAPI for high-performance API
+  - SQLAlchemy for database operations
+  - spaCy and TextBlob for NLP
+  - Modern React-based UI
 
-## Technical Implementation
+## 🛠️ Technical Architecture
 
-### NLP Features
+- **Backend**: Python/FastAPI
+- **Database**: PostgreSQL (SQLite for development)
+- **NLP**: spaCy, TextBlob
+- **Authentication**: JWT-based
+- **Frontend**: React with Tailwind CSS
 
-#### 1. Sentiment Analysis
-- Core Algorithm: Naive Bayes Classification with Pattern Matching
-- Implementation Details:
-  - TextBlob's PatternAnalyzer for base sentiment
-  - Custom-trained Naive Bayes classifier for domain-specific sentiment
-  - N-gram analysis (unigrams and bigrams) for context
-  - Word embeddings for semantic understanding
-- Data Structures:
-  - Dictionary-based lexicons for sentiment scores
-  - Prefix trees (tries) for quick word lookup
-  - Priority queue for top sentiment features
-- Performance Optimizations:
-  - Caching of frequent patterns
-  - Lazy loading of large lexicons
-  - Parallel processing for long texts
+## 📋 Prerequisites
 
-#### 2. Named Entity Recognition (NER)
-- Core Algorithms:
-  - Named Entity Recognition (spaCy's NER)
-  - Conditional Random Fields for sequence labeling
-  - Rule-based post-processing
-- Implementation Details:
-  - Custom gazetteer integration
-  - Context window analysis (±3 words)
-  - Regular expression patterns for specific entities
-- Data Structures:
-  - Directed Acyclic Graph (DAG) for entity relationships
-  - Hash tables for entity lookup
-  - B-trees for efficient string matching
-- Performance Features:
-  - Incremental parsing for large texts
-  - Memoization of frequent entities
-  - Batch processing capabilities
+- Python 3.11+
+- Node.js 16+
+- PostgreSQL (optional, SQLite works for local development)
 
-#### 3. Key Phrase Extraction
-- Core Algorithms:
-  - TF-IDF (Term Frequency-Inverse Document Frequency)
-  - TextRank variant for phrase ranking
-  - Part-of-Speech pattern matching
-- Implementation Details:
-  - Custom stop word filtering
-  - Collocation detection
-  - N-gram generation (n=1 to 4)
-  - Syntactic tree parsing
-- Data Structures:
-  - Suffix arrays for phrase matching
-  - Min-heap for top-k phrase selection
-  - Inverted index for term frequency
-- Optimizations:
-  - Sliding window for phrase detection
-  - Early stopping for long documents
-  - Dynamic programming for sub-phrase analysis
+## 🚀 Local Development Setup
 
-#### 4. Text Summarization
-- Core Algorithms:
-  - TextRank with modified PageRank scoring
-  - Latent Semantic Analysis (LSA)
-  - Sentence clustering using K-means
-- Implementation Details:
-  - Graph-based sentence representation
-  - Cosine similarity matrix computation
-  - Position-based sentence weighting
-  - Topic modeling using LDA
-- Data Structures:
-  - Adjacency matrix for sentence relationships
-  - Priority queue for sentence ranking
-  - Sparse matrix for term-sentence matrix
-- Performance Features:
-  - Incremental summary updates
-  - Parallel similarity computation
-  - Dimensionality reduction techniques
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/yourusername/textscope.git
+   cd textscope
+   ```
 
-#### 5. Readability Analysis
-- Core Algorithms:
-  - Flesch-Kincaid Grade Level
-  - Automated Readability Index
-  - Custom complexity scoring
-- Implementation Details:
-  - Syllable counting using CMU pronouncing dictionary
-  - Sentence boundary detection
-  - Complex word identification
-  - Professional jargon detection
-- Data Structures:
-  - Trie for syllable patterns
-  - Bloom filter for common words
-  - Hash table for readability metrics
-- Optimizations:
-  - Cached syllable counts
-  - Parallel text statistics computation
-  - Incremental metric updates
+2. **Create and Activate Virtual Environment**
+   ```bash
+   python -m venv venv
+   # On Windows
+   .\venv\Scripts\activate
+   # On macOS/Linux
+   source venv/bin/activate
+   ```
 
-### Processing Pipeline
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   python -m spacy download en_core_web_sm
+   ```
 
-1. Text Preprocessing
-   - Unicode normalization (NFC form)
-   - Regular expression-based cleaning
-   - Language detection using n-gram analysis
-   - Sentence segmentation with ML-based boundary detection
+4. **Set Up Environment Variables**
+   Create a `.env` file in the root directory:
+   ```env
+   DATABASE_URL=sqlite:///./textscope.db
+   SECRET_KEY=your-secret-key-here
+   ALGORITHM=HS256
+   ACCESS_TOKEN_EXPIRE_MINUTES=30
+   ENVIRONMENT=development
+   MAX_CONTENT_LENGTH=10000
+   LOG_LEVEL=INFO
+   ```
 
-2. Analysis Pipeline
-   - Asynchronous processing with asyncio
-   - Parallel feature extraction
-   - Error handling with exponential backoff
-   - Result validation using schema checking
+5. **Initialize Database**
+   ```bash
+   # The tables will be created automatically on first run
+   python src/main.py
+   ```
 
-3. Post-processing
-   - JSON serialization with custom encoders
-   - Response normalization
-   - Confidence score computation
-   - Cache management
+6. **Run the Application**
+   ```bash
+   uvicorn src.main:app --reload
+   ```
 
-## Setup
+7. **Access the Application**
+   - Web Interface: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+   - Alternative API Docs: http://localhost:8000/redoc
 
-1. Clone the repository:
+## 🧪 Running Tests
+
 ```bash
-git clone https://github.com/yourusername/textscope.git
-cd textscope
+pytest
 ```
 
-2. Create a virtual environment and activate it:
-```bash
-.\venv311\Scripts\Activate.ps1 
-python -m venv venv
-.\venv\Scripts\Activate  
-```
+## 📚 API Documentation
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+The API documentation is automatically generated and can be accessed at:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
 
-4. Create a `.env` file in the root directory:
-```env
-SECRET_KEY=your-secret-key-here
-DATABASE_URL=sqlite:///./textscope.db
-```
+Key endpoints:
+- `POST /token` - User authentication
+- `POST /users/` - User registration
+- `POST /analyze/` - Text analysis
+- `GET /analyses/` - Get analysis history
 
-5. Run the application:
-```bash
-uvicorn src.main:app --reload
-```
+## 🔒 Security Features
 
-The application will be available at `http://localhost:8000`
+- JWT-based authentication
+- Password hashing with bcrypt
+- CORS protection
+- Rate limiting
+- Input validation
+- SQL injection protection through SQLAlchemy
 
-## API Documentation
-
-Once the application is running, you can access the API documentation at:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-## Project Structure
+## 💡 Project Structure
 
 ```
 textscope/
 ├── src/
-│   ├── __init__.py
 │   ├── main.py           # FastAPI application
 │   ├── database.py       # Database configuration
 │   ├── models.py         # SQLAlchemy models
 │   ├── schemas.py        # Pydantic schemas
-│   ├── security.py       # Authentication
-│   └── nlp.py           # Text analysis with spaCy
+│   ├── security.py       # Authentication logic
+│   └── text_preprocessor.py  # Text analysis logic
 ├── static/
-│   ├── styles.css
-│   └── app.js
+│   └── js/              # Frontend JavaScript
 ├── templates/
-│   └── index.html
-├── requirements.txt
-└── README.md
+│   └── index.html       # Main application template
+├── tests/               # Test suite
+├── requirements.txt     # Python dependencies
+└── README.md           # This file
 ```
 
-## Contributing
+## 🤝 Contributing
 
+This is a portfolio project, but I welcome feedback and suggestions! Feel free to:
 1. Fork the repository
 2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+3. Submit a pull request
 
-## License
+## 📝 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🎯 Future Improvements
+
+- [ ] Add more advanced NLP features
+- [ ] Implement caching for better performance
+- [ ] Add export functionality for analysis results
+- [ ] Enhance test coverage
+- [ ] Add more visualization options
+
+## 👤 Author
+
+Your Name
+- GitHub: [@yourusername](https://github.com/yourusername)
+- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+
+## 🙏 Acknowledgments
+
+- FastAPI for the excellent framework
+- spaCy and TextBlob for NLP capabilities
+- The open-source community for inspiration and tools
 

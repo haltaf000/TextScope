@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 import os
+import logging
 
 load_dotenv()
 
@@ -50,10 +51,19 @@ def check_database_health():
     try:
         from sqlalchemy import text
         db = SessionLocal()
-        # Simple query to test connection
-        db.execute(text("SELECT 1"))
-        db.close()
-        return True
+        try:
+            # Test basic query
+            db.execute(text("SELECT 1"))
+            
+            # Test actual table access
+            db.execute(text("SELECT COUNT(*) FROM users"))
+            
+            return True
+        except Exception as e:
+            logging.error(f"Database query failed during health check: {e}")
+            return False
+        finally:
+            db.close()
     except Exception as e:
-        print(f"Database health check failed: {e}")
+        logging.error(f"Database connection failed during health check: {e}")
         return False
