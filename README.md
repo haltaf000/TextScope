@@ -32,7 +32,7 @@ TextScope is a sophisticated text analysis platform that provides professional-g
 
 ## 📋 Prerequisites
 
-- Python 3.11+
+- Python 3.11 (recommended version 3.11.9 or later, do not use Python 3.12)
 - Node.js 16+
 - PostgreSQL (optional, SQLite works for local development)
 
@@ -46,7 +46,12 @@ TextScope is a sophisticated text analysis platform that provides professional-g
 
 2. **Create and Activate Virtual Environment**
    ```bash
+   # Make sure you're using Python 3.11
+   python --version  # Should show Python 3.11.x
+   
+   # Create virtual environment
    python -m venv venv
+   
    # On Windows
    .\venv\Scripts\activate
    # On macOS/Linux
